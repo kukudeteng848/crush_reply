@@ -1,0 +1,137 @@
+<view class="page">
+
+  <view class="full-state" wx:if="{{loading}}">
+    <view class="state-emoji">⏳</view>
+    <view class="state-text">加载中...</view>
+  </view>
+
+  <view class="full-state" wx:elif="{{errorMsg}}">
+    <view class="state-emoji">⚠️</view>
+    <view class="state-text">{{errorMsg}}</view>
+  </view>
+
+  <block wx:else>
+    <scroll-view
+      class="msg-area"
+      scroll-y
+      scroll-into-view="{{scrollToView}}"
+      scroll-with-animation
+      enable-flex
+    >
+      <view class="empty-tip" wx:if="{{messages.length === 0}}">
+        <view class="empty-emoji">💬</view>
+        <view class="empty-text">把 Ta 发来的消息粘进下面输入框</view>
+        <view class="empty-sub">选个风格，AI 帮你想怎么回</view>
+        <view class="empty-hint">💡 长按聊天气泡可以删除</view>
+      </view>
+
+      <view
+        wx:for="{{messages}}"
+        wx:key="_id"
+        class="msg-round"
+        id="msg-{{item._id}}"
+        bindlongpress="onLongPressMessage"
+        data-id="{{item._id}}"
+      >
+        <!-- 时间标记 -->
+        <view class="time-mark" wx:if="{{item.timeMark}}">{{item.timeMark}}</view>
+
+        <view class="bubble-row left">
+          <view class="avatar avatar-crush" bindtap="onTapCrushAvatar">
+            <image src="{{conversation.crushAvatar}}" wx:if="{{conversation.crushAvatar}}" mode="aspectFill"></image>
+            <view class="avatar-default" wx:else>{{conversation.crushNickname[0]}}</view>
+          </view>
+          <view class="bubble bubble-crush">
+            <text>{{item.crushMessage}}</text>
+          </view>
+        </view>
+
+        <view class="bubble-row right">
+          <view class="ai-card {{item.error ? 'ai-card-error' : ''}}">
+            <view class="ai-card-header">
+              <text class="ai-label">AI 建议</text>
+              <text class="ai-style">{{item.styleId}}</text>
+            </view>
+
+            <view wx:if="{{item.loading}}" class="thinking">
+              <text class="dot">•</text><text class="dot">•</text><text class="dot">•</text>
+              <text class="thinking-text">思考中</text>
+            </view>
+
+            <view wx:elif="{{item.error}}" class="error-block">
+              <view class="error-text">⚠️ {{item.error}}</view>
+              <view class="retry-btn" data-id="{{item._id}}" bindtap="onRetry">点击重试</view>
+            </view>
+
+            <block wx:else>
+              <view
+                wx:for="{{item.suggestions}}"
+                wx:for-item="sug"
+                wx:for-index="sIdx"
+                wx:key="sIdx"
+                class="suggestion"
+              >
+                <text class="suggestion-text">{{sug}}</text>
+                <view class="suggestion-copy" data-text="{{sug}}" catchtap="onTapCopy">复制</view>
+              </view>
+
+              <view
+                wx:if="{{item.suggestions.length < 3 && !item.loadingMore}}"
+                class="more-btn"
+                data-id="{{item._id}}"
+                catchtap="onTapMore"
+              >
+                {{item.moreError ? '⚠️ 失败，点击重试' : '再来 ' + (3 - item.suggestions.length) + ' 条'}}
+              </view>
+
+              <view wx:if="{{item.loadingMore}}" class="thinking thinking-mini">
+                <text class="dot">•</text><text class="dot">•</text><text class="dot">•</text>
+              </view>
+            </block>
+          </view>
+
+          <view class="avatar avatar-me" bindtap="onTapMyAvatar">
+            <image wx:if="{{me.avatar}}" src="{{me.avatar}}" mode="aspectFill"></image>
+            <view wx:else class="avatar-default avatar-default-me">{{me.nickname[0] || '我'}}</view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="input-bar">
+      <view class="input-row">
+        <input
+          class="input"
+          placeholder="把 crush 发来的消息粘到这里..."
+          value="{{inputText}}"
+          bindinput="onInputChange"
+          confirm-type="send"
+          bindconfirm="onTapSend"
+        />
+        <view
+          class="send-btn {{(inputText && selectedStyleId && !sending) ? 'active' : 'disabled'}}"
+          bindtap="onTapSend"
+        >
+          {{sending ? '生成中...' : '发送'}}
+        </view>
+      </view>
+
+      <scroll-view scroll-x class="style-row" wx:if="{{styles.length > 0}}">
+        <view
+          wx:for="{{styles}}"
+          wx:key="id"
+          class="style-pill {{selectedStyleId === item.id ? 'selected' : ''}}"
+          data-id="{{item.id}}"
+          bindtap="onSelectStyle"
+        >
+          <text class="style-emoji">{{item.emoji}}</text>
+          <text class="style-name">{{item.displayName}}</text>
+        </view>
+      </scroll-view>
+      <view wx:else class="style-row-empty">
+        ⚠️ 风格未加载（共 {{styles.length}} 条）。请确认 styles 表已建好、权限是"所有用户可读"
+      </view>
+    </view>
+  </block>
+
+</view>

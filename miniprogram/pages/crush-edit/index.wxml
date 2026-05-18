@@ -1,0 +1,63 @@
+<view class="container">
+  <view class="avatar-section" bindtap="onTapAvatar">
+    <view class="avatar-wrap">
+      <image wx:if="{{avatar}}" src="{{avatar}}" class="avatar-big" mode="aspectFill"></image>
+      <view wx:else class="avatar-big avatar-default">{{nickname[0] || 'c'}}</view>
+    </view>
+    <view class="avatar-hint">{{uploading ? '上传中...' : '点击设置头像（可选）'}}</view>
+  </view>
+
+  <view class="section-title">基本信息</view>
+  <view class="card">
+    <view class="row">
+      <text class="label">昵称</text>
+      <input
+        class="input"
+        placeholder="crush"
+        value="{{nickname}}"
+        bindinput="onNicknameInput"
+        maxlength="20"
+      />
+    </view>
+  </view>
+
+  <view class="section-title">Ta 的资料</view>
+  <view class="card">
+    <view class="row">
+      <text class="label">性别 <text class="required">*</text></text>
+      <picker mode="selector" range="{{genderList}}" value="{{genderIndex}}" bindchange="onGenderChange">
+        <view class="picker-value">
+          <text class="{{!gender ? 'placeholder' : ''}}">{{gender || '请选择'}}</text>
+          <text class="chevron">›</text>
+        </view>
+      </picker>
+    </view>
+    <view class="row">
+      <text class="label">MBTI <text class="optional">(选填)</text></text>
+      <picker mode="selector" range="{{mbtiList}}" value="{{mbtiIndex}}" bindchange="onMbtiChange">
+        <view class="picker-value">
+          <text class="{{!mbti ? 'placeholder' : ''}}">{{mbti || '请选择'}}</text>
+          <text class="chevron">›</text>
+        </view>
+      </picker>
+    </view>
+    <view class="row">
+      <text class="label">星座 <text class="optional">(选填)</text></text>
+      <picker mode="selector" range="{{zodiacList}}" value="{{zodiacIndex}}" bindchange="onZodiacChange">
+        <view class="picker-value">
+          <text class="{{!zodiac ? 'placeholder' : ''}}">{{zodiac || '请选择'}}</text>
+          <text class="chevron">›</text>
+        </view>
+      </picker>
+    </view>
+  </view>
+
+  <view class="tip">
+    Ta 的 MBTI 和星座会让 AI 生成的回复更贴合 Ta 的性格。{'\n'}不知道也没关系，留空即可。
+  </view>
+
+  <view class="footer">
+    <button class="btn-cancel" bindtap="onTapCancel">取消</button>
+    <button class="btn-save" bindtap="onTapSave" loading="{{saving}}" disabled="{{saving}}">保存</button>
+  </view>
+</view>

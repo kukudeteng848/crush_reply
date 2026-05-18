@@ -1,0 +1,56 @@
+<view class="container">
+  <!-- 加载中 -->
+  <view class="state-block" wx:if="{{loading}}">
+    <view class="state-emoji">⏳</view>
+    <view class="state-text">登录中...</view>
+  </view>
+
+  <!-- 出错 -->
+  <view class="state-block" wx:elif="{{errorMsg}}">
+    <view class="state-emoji">⚠️</view>
+    <view class="state-text">{{errorMsg}}</view>
+    <view class="state-hint">请检查 login 云函数是否已部署</view>
+  </view>
+
+  <!-- 列表 -->
+  <block wx:else>
+    <!-- 顶部"我的资料"入口 -->
+    <view class="me-header" bindtap="onTapMe" wx:if="{{user}}">
+      <view class="me-avatar">
+        <image wx:if="{{user.avatar}}" src="{{user.avatar}}" mode="aspectFill"></image>
+        <view wx:else class="me-avatar-default">{{user.nickname[0] || '我'}}</view>
+      </view>
+      <view class="me-info">
+        <text class="me-name">{{user.nickname || '我'}}</text>
+        <text class="me-sub">点击设置我的资料</text>
+      </view>
+      <text class="me-chevron">›</text>
+    </view>
+
+    <view class="empty-state" wx:if="{{conversations.length === 0}}">
+      <view class="empty-emoji">💌</view>
+      <view class="empty-title">还没有 crush</view>
+      <view class="empty-subtitle">点右下角 + 添加你的第一个心动对象</view>
+    </view>
+
+    <view class="conv-list" wx:else>
+      <view class="conv-list-hint">💡 长按 crush 卡片可编辑资料或删除</view>
+      <view class="conv-item" wx:for="{{conversations}}" wx:key="_id" bindtap="onTapConversation" bindlongpress="onLongPressConversation" data-id="{{item._id}}">
+        <view class="conv-avatar">
+          <image src="{{item.crushAvatar}}" wx:if="{{item.crushAvatar}}" mode="aspectFill"></image>
+          <view class="conv-avatar-default" wx:else>{{item.crushNickname[0] || '?'}}</view>
+        </view>
+        <view class="conv-content">
+          <view class="conv-row">
+            <text class="conv-name">{{item.crushNickname}}</text>
+            <text class="conv-time">{{item.lastMessageAtText || ''}}</text>
+          </view>
+          <view class="conv-preview">{{item.lastMessagePreview || '还没有聊天，快开始吧'}}</view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 浮动 + 按钮 -->
+  <view class="fab" bindtap="onTapAdd" wx:if="{{!loading && !errorMsg}}">+</view>
+</view>

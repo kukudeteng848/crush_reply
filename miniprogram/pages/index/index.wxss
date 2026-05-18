@@ -1,0 +1,220 @@
+.container {
+  min-height: 100vh;
+  background-color: #ededed;
+  position: relative;
+}
+
+/* 状态块：加载中/出错 */
+.state-block {
+  padding: 200rpx 60rpx 60rpx;
+  text-align: center;
+}
+
+.state-emoji {
+  font-size: 100rpx;
+  line-height: 1;
+}
+
+.state-text {
+  margin-top: 32rpx;
+  font-size: 32rpx;
+  color: #333;
+}
+
+.state-hint {
+  margin-top: 16rpx;
+  font-size: 26rpx;
+  color: #999;
+}
+
+/* 空状态 */
+.empty-state {
+  padding: 200rpx 60rpx 60rpx;
+  text-align: center;
+}
+
+.empty-emoji {
+  font-size: 120rpx;
+  line-height: 1;
+}
+
+.empty-title {
+  margin-top: 32rpx;
+  font-size: 36rpx;
+  font-weight: 500;
+  color: #1a1a1a;
+}
+
+.empty-subtitle {
+  margin-top: 16rpx;
+  font-size: 28rpx;
+  color: #888;
+}
+
+/* 列表：仿微信对话样式 */
+.conv-list {
+  background: #ffffff;
+}
+
+.conv-list-hint {
+  padding: 16rpx 32rpx;
+  font-size: 22rpx;
+  color: #b0b0b0;
+  background: #f5f5f7;
+  border-bottom: 1rpx solid #ededed;
+}
+
+.conv-item {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid #ededed;
+  background: #ffffff;
+}
+
+.conv-item:active {
+  background: #f0f0f0;
+}
+
+.conv-avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 12rpx;
+  overflow: hidden;
+  background: #07c160;
+  margin-right: 24rpx;
+  flex-shrink: 0;
+}
+
+.conv-avatar image {
+  width: 100%;
+  height: 100%;
+}
+
+.conv-avatar-default {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 40rpx;
+  font-weight: 500;
+}
+
+.conv-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.conv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.conv-name {
+  font-size: 32rpx;
+  color: #1a1a1a;
+  font-weight: 500;
+}
+
+.conv-time {
+  font-size: 24rpx;
+  color: #999;
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}
+
+.conv-preview {
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 顶部"我的资料"入口 */
+.me-header {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  background: #ffffff;
+  border-bottom: 1rpx solid #ededed;
+}
+
+.me-header:active {
+  background: #f5f5f5;
+}
+
+.me-avatar {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 12rpx;
+  overflow: hidden;
+  background: #576b95;
+  margin-right: 24rpx;
+  flex-shrink: 0;
+}
+
+.me-avatar image {
+  width: 100%;
+  height: 100%;
+}
+
+.me-avatar-default {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 36rpx;
+  font-weight: 500;
+}
+
+.me-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.me-name {
+  font-size: 32rpx;
+  color: #1a1a1a;
+  font-weight: 500;
+}
+
+.me-sub {
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: #999;
+}
+
+.me-chevron {
+  color: #ccc;
+  font-size: 40rpx;
+}
+
+/* 浮动 + 按钮 */
+.fab {
+  position: fixed;
+  right: 48rpx;
+  bottom: 80rpx;
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 56rpx;
+  background: #07c160;
+  color: #ffffff;
+  font-size: 60rpx;
+  line-height: 108rpx;
+  text-align: center;
+  box-shadow: 0 8rpx 24rpx rgba(7, 193, 96, 0.4);
+  z-index: 100;
+}
+
+.fab:active {
+  background: #06ad56;
+  transform: scale(0.95);
+}

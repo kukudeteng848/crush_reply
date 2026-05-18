@@ -1,0 +1,15 @@
+# 敏感配置 - 千万不能上传到 GitHub
+.env
+.env.local
+config/secrets.json
+cloudfunctions/**/.env
+cloudfunctions/**/secrets.json
+
+# 系统文件
+.DS_Store
+node_modules/
+*.log
+
+# 微信开发者工具临时文件
+project.private.config.json
+miniprogram_npm/

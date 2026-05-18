@@ -1,0 +1,28 @@
+<view class="container">
+  <view class="profile-section" bindtap="onTapAvatar">
+    <view class="avatar-wrap">
+      <image
+        wx:if="{{user.avatar}}"
+        src="{{user.avatar}}"
+        class="avatar-big"
+        mode="aspectFill"
+      ></image>
+      <view wx:else class="avatar-big avatar-default">{{user.nickname[0] || '我'}}</view>
+    </view>
+    <view class="avatar-hint">{{uploading ? '上传中...' : '点击更换头像'}}</view>
+  </view>
+
+  <view class="card">
+    <view class="row" bindtap="onTapNickname">
+      <text class="label">昵称</text>
+      <view class="value-wrap">
+        <text class="value">{{user.nickname || '我'}}</text>
+        <text class="chevron">›</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="tip">
+    昵称和头像会在聊天页的右侧（也就是「我」这一边）显示。{'\n'}AI 不会知道你的昵称，只用于 UI 展示。
+  </view>
+</view>
