@@ -88,6 +88,14 @@ Page({
     });
   },
 
+  onTapPrivacy() {
+    wx.navigateTo({ url: '/pages/privacy/index' });
+  },
+
+  onTapTerms() {
+    wx.navigateTo({ url: '/pages/terms/index' });
+  },
+
   async updateNickname(nickname) {
     wx.showLoading({ title: '保存中...', mask: true });
     try {

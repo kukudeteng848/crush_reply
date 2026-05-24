@@ -3,7 +3,9 @@
     "pages/index/index",
     "pages/crush-edit/index",
     "pages/chat/index",
-    "pages/me/index"
+    "pages/me/index",
+    "pages/privacy/index",
+    "pages/terms/index"
   ],
   "window": {
     "backgroundTextStyle": "light",

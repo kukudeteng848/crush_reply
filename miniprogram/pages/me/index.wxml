@@ -22,6 +22,17 @@
     </view>
   </view>
 
+  <view class="card">
+    <view class="row" bindtap="onTapTerms">
+      <text class="label">用户协议</text>
+      <view class="value-wrap"><text class="chevron">›</text></view>
+    </view>
+    <view class="row" bindtap="onTapPrivacy">
+      <text class="label">隐私政策</text>
+      <view class="value-wrap"><text class="chevron">›</text></view>
+    </view>
+  </view>
+
   <view class="tip">
     昵称和头像会在聊天页的右侧（也就是「我」这一边）显示。{'\n'}AI 不会知道你的昵称，只用于 UI 展示。
   </view>

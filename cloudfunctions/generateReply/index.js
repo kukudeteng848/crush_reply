@@ -11,6 +11,28 @@ const db = cloud.database();
 const DEEPSEEK_URL = 'https://api.deepseek.com/v1/chat/completions';
 const DEEPSEEK_MODEL = 'deepseek-chat';
 
+// 内容安全检测：调用微信 msgSecCheck
+// 返回 { safe: bool, label?: string }
+async function checkMsgSec(content, openid) {
+  if (!content || !content.trim()) return { safe: true };
+  try {
+    const res = await cloud.openapi.security.msgSecCheck({
+      version: 2,
+      openid,
+      scene: 4, // 1 资料；2 评论；3 论坛；4 社交日志
+      content: content.trim()
+    });
+    if (res && res.result && res.result.suggest === 'risky') {
+      return { safe: false, label: res.result.label };
+    }
+    return { safe: true };
+  } catch (err) {
+    // 网络/API 异常时，fail-open（demo 阶段），但记日志
+    console.warn('[msgSecCheck] error, fail-open:', err.errMsg || err.message);
+    return { safe: true, warning: true };
+  }
+}
+
 const SCENARIOS = {
   icebreak: {
     label: '破冰',
@@ -75,6 +97,25 @@ exports.main = async (event) => {
     };
   }
 
+  const wxContextEarly = cloud.getWXContext();
+  const openid = wxContextEarly.OPENID;
+
+  // ============ 输入内容安全检测 ============
+  const userInputs = [];
+  if (type === 'reply' && crushMessage) userInputs.push(crushMessage);
+  if (type === 'initiate' && intent && intent.context) userInputs.push(intent.context);
+  for (const input of userInputs) {
+    const check = await checkMsgSec(input, openid);
+    if (!check.safe) {
+      return {
+        success: false,
+        error: 'content_unsafe_input',
+        hint: '输入内容包含敏感词，请修改后重试',
+        label: check.label
+      };
+    }
+  }
+
   let conv;
   try {
     const res = await db.collection('conversations').doc(conversationId).get();
@@ -118,6 +159,21 @@ exports.main = async (event) => {
     if (suggestions.length === 0) {
       return { success: false, error: 'empty_reply', raw: text };
     }
+
+    // ============ AI 输出内容安全检测 ============
+    const safeSuggestions = [];
+    for (const s of suggestions) {
+      const check = await checkMsgSec(s, openid);
+      if (check.safe) safeSuggestions.push(s);
+    }
+    if (safeSuggestions.length === 0) {
+      return {
+        success: false,
+        error: 'content_unsafe_output',
+        hint: 'AI 生成的内容触发了安全检测，请换个说法或换个风格重试'
+      };
+    }
+    suggestions = safeSuggestions;
   } catch (err) {
     return {
       success: false,
@@ -126,11 +182,10 @@ exports.main = async (event) => {
     };
   }
 
-  const wxContext = cloud.getWXContext();
   const now = new Date();
   const msgAdd = await db.collection('messages').add({
     data: {
-      _openid: wxContext.OPENID,
+      _openid: openid,
       conversationId,
       type,
       intent: type === 'initiate' ? intent : null,
