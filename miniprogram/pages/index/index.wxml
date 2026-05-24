@@ -1,8 +1,20 @@
 <view class="container">
-  <!-- 加载中 -->
-  <view class="state-block" wx:if="{{loading}}">
-    <view class="state-emoji">⏳</view>
-    <view class="state-text">登录中...</view>
+  <!-- 加载中：骨架屏 -->
+  <view class="sk-page" wx:if="{{loading}}">
+    <view class="sk-me-header">
+      <view class="sk-me-avatar"></view>
+      <view class="sk-me-info">
+        <view class="sk-me-name"></view>
+        <view class="sk-me-sub"></view>
+      </view>
+    </view>
+    <view class="sk-conv" wx:for="{{[1,2,3]}}" wx:key="*this">
+      <view class="sk-conv-avatar"></view>
+      <view class="sk-conv-content">
+        <view class="sk-conv-name"></view>
+        <view class="sk-conv-preview"></view>
+      </view>
+    </view>
   </view>
 
   <!-- 出错 -->
@@ -28,9 +40,16 @@
     </view>
 
     <view class="empty-state" wx:if="{{conversations.length === 0}}">
-      <view class="empty-emoji">💌</view>
-      <view class="empty-title">还没有 crush</view>
-      <view class="empty-subtitle">点右下角 + 添加你的第一个心动对象</view>
+      <view class="empty-illustration">
+        <view class="empty-orb"></view>
+        <view class="empty-emoji">💌</view>
+      </view>
+      <view class="empty-title">还没有 crush 呀</view>
+      <view class="empty-subtitle">谁让你心动了？</view>
+      <view class="empty-arrow">
+        <text class="arrow-text">点右下角 + 添加 ta</text>
+        <text class="arrow-icon">↘</text>
+      </view>
     </view>
 
     <view class="conv-list" wx:else>

@@ -92,3 +92,19 @@
   line-height: 1.6;
   white-space: pre-line;
 }
+
+/* ============ 按压反馈（B） ============ */
+.avatar-wrap,
+.row {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.avatar-wrap:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
+.profile-section:active .avatar-big {
+  transform: scale(0.96);
+  transition: transform 0.15s ease;
+}

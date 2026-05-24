@@ -1,8 +1,18 @@
 <view class="page">
 
-  <view class="full-state" wx:if="{{loading}}">
-    <view class="state-emoji">⏳</view>
-    <view class="state-text">加载中...</view>
+  <view class="skeleton-page" wx:if="{{loading}}">
+    <view class="sk-bubble sk-left">
+      <view class="sk-avatar"></view>
+      <view class="sk-text sk-text-short"></view>
+    </view>
+    <view class="sk-bubble sk-right">
+      <view class="sk-text sk-text-long"></view>
+      <view class="sk-avatar"></view>
+    </view>
+    <view class="sk-bubble sk-left">
+      <view class="sk-avatar"></view>
+      <view class="sk-text sk-text-medium"></view>
+    </view>
   </view>
 
   <view class="full-state" wx:elif="{{errorMsg}}">
@@ -19,10 +29,16 @@
       enable-flex
     >
       <view class="empty-tip" wx:if="{{messages.length === 0}}">
-        <view class="empty-emoji">💬</view>
-        <view class="empty-text">把 Ta 发来的消息粘进下面输入框</view>
-        <view class="empty-sub">选个风格，AI 帮你想怎么回</view>
-        <view class="empty-hint">💡 长按聊天气泡可以删除</view>
+        <view class="empty-illustration">
+          <view class="empty-orb"></view>
+          <view class="empty-emoji">💬</view>
+        </view>
+        <view class="empty-text">还没和 Ta 聊过</view>
+        <view class="empty-sub-block">
+          <view class="empty-sub-line">📥 把 Ta 发的消息粘下方</view>
+          <view class="empty-sub-line">💡 或点黄色"主动找 Ta 聊"</view>
+        </view>
+        <view class="empty-hint">长按聊天气泡可以删除</view>
       </view>
 
       <view
@@ -33,10 +49,10 @@
         bindlongpress="onLongPressMessage"
         data-id="{{item._id}}"
       >
-        <!-- 时间标记 -->
         <view class="time-mark" wx:if="{{item.timeMark}}">{{item.timeMark}}</view>
 
-        <view class="bubble-row left">
+        <!-- 左侧 crush 气泡：仅在 reply 模式显示 -->
+        <view class="bubble-row left" wx:if="{{item.type !== 'initiate'}}">
           <view class="avatar avatar-crush" bindtap="onTapCrushAvatar">
             <image src="{{conversation.crushAvatar}}" wx:if="{{conversation.crushAvatar}}" mode="aspectFill"></image>
             <view class="avatar-default" wx:else>{{conversation.crushNickname[0]}}</view>
@@ -47,10 +63,14 @@
         </view>
 
         <view class="bubble-row right">
-          <view class="ai-card {{item.error ? 'ai-card-error' : ''}}">
+          <view class="ai-card {{item.error ? 'ai-card-error' : ''}} {{item.type === 'initiate' ? 'ai-card-initiate' : ''}}">
             <view class="ai-card-header">
-              <text class="ai-label">AI 建议</text>
-              <text class="ai-style">{{item.styleId}}</text>
+              <text class="ai-label">{{item.typeLabel}}</text>
+              <text class="ai-style">{{item.styleDisplay}}</text>
+            </view>
+
+            <view wx:if="{{item.type === 'initiate' && item.intent.context}}" class="intent-context">
+              意图：{{item.intent.context}}
             </view>
 
             <view wx:if="{{item.loading}}" class="thinking">
@@ -99,10 +119,15 @@
     </scroll-view>
 
     <view class="input-bar">
+      <!-- 主动入口 -->
+      <view class="initiate-entry" bindtap="openInitiateModal">
+        💡 想主动找 {{conversation.crushNickname}} 聊？
+      </view>
+
       <view class="input-row">
         <input
           class="input"
-          placeholder="把 crush 发来的消息粘到这里..."
+          placeholder="或粘 crush 发来的消息..."
           value="{{inputText}}"
           bindinput="onInputChange"
           confirm-type="send"
@@ -133,5 +158,49 @@
       </view>
     </view>
   </block>
+
+  <!-- 主动模式弹窗 -->
+  <view class="modal-wrap" wx:if="{{initiateModalVisible}}" bindtap="closeInitiateModal">
+    <view class="modal-sheet" catchtap="noop">
+      <view class="modal-handle"></view>
+      <view class="modal-title">主动找 {{conversation.crushNickname}}</view>
+
+      <view class="modal-section-label">选个场景</view>
+      <view class="scenarios">
+        <view
+          wx:for="{{scenarios}}"
+          wx:key="key"
+          class="scenario-chip {{selectedScenario === item.key ? 'selected' : ''}}"
+          data-key="{{item.key}}"
+          bindtap="onSelectScenario"
+        >
+          <text class="scenario-emoji">{{item.emoji}}</text>
+          <text class="scenario-label">{{item.label}}</text>
+        </view>
+      </view>
+
+      <view class="modal-section-label">
+        具体想说什么？
+        <text class="modal-section-hint">（"其他"必填，其他场景可空）</text>
+      </view>
+      <textarea
+        class="modal-textarea"
+        value="{{intentContext}}"
+        bindinput="onIntentContextInput"
+        placeholder="例如：周末想约去看《热辣滚烫》"
+        maxlength="100"
+        auto-height
+      />
+
+      <view class="modal-meta">
+        将用风格：<text class="modal-meta-strong">{{selectedStyleDisplay}}</text>
+      </view>
+
+      <view class="modal-actions">
+        <button class="modal-btn modal-btn-cancel" bindtap="closeInitiateModal">取消</button>
+        <button class="modal-btn modal-btn-confirm" bindtap="onConfirmInitiate">生成开场白</button>
+      </view>
+    </view>
+  </view>
 
 </view>
