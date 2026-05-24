@@ -1,3 +1,15 @@
+// 跟云函数保持一致的场景配置（仅用于 UI 展示）
+const SCENARIOS = [
+  { key: 'icebreak', label: '破冰', emoji: '💬', hint: '刚加微信不知道说什么' },
+  { key: 'invite', label: '邀约', emoji: '📅', hint: '想约 ta 出来玩' },
+  { key: 'care', label: '关心', emoji: '🤗', hint: 'ta 今天考试/出差/生病' },
+  { key: 'apology', label: '道歉', emoji: '🙏', hint: '吵架后想和好' },
+  { key: 'festival', label: '节日', emoji: '🎉', hint: '生日/七夕/圣诞等' },
+  { key: 'other', label: '其他', emoji: '💡', hint: '自由描述你的意图' }
+];
+
+const SCENARIO_MAP = SCENARIOS.reduce((m, s) => { m[s.key] = s; return m; }, {});
+
 function formatTimeMark(date) {
   if (!date) return '';
   const d = new Date(date);
@@ -18,13 +30,24 @@ function formatTimeMark(date) {
 
 const FIVE_MIN = 5 * 60 * 1000;
 
-function withTimeMarks(messages) {
+function decorateMessage(m, styleMap) {
+  let typeLabel = 'AI 建议';
+  if (m.type === 'initiate' && m.intent && m.intent.scenario) {
+    const s = SCENARIO_MAP[m.intent.scenario] || SCENARIO_MAP.other;
+    typeLabel = `${s.emoji} 主动·${s.label}`;
+  }
+  const s = styleMap && styleMap[m.styleId];
+  const styleDisplay = s ? `${s.emoji} ${s.displayName}` : (m.styleId || '');
+  return { ...m, typeLabel, styleDisplay };
+}
+
+function withTimeMarks(messages, styleMap) {
   let lastT = 0;
   return messages.map((m, i) => {
     const t = m.createdAt ? new Date(m.createdAt).getTime() : Date.now();
     const showTime = i === 0 || (t - lastT) > FIVE_MIN;
     lastT = t;
-    return { ...m, timeMark: showTime ? formatTimeMark(m.createdAt) : '' };
+    return { ...decorateMessage(m, styleMap), timeMark: showTime ? formatTimeMark(m.createdAt) : '' };
   });
 }
 
@@ -34,13 +57,20 @@ Page({
     conversation: null,
     me: null,
     styles: [],
+    styleMap: {},
     selectedStyleId: '',
+    selectedStyleDisplay: '',
     messages: [],
     inputText: '',
     loading: true,
     sending: false,
     scrollToView: '',
-    errorMsg: ''
+    errorMsg: '',
+    // 主动模式弹窗
+    initiateModalVisible: false,
+    scenarios: SCENARIOS,
+    selectedScenario: 'icebreak',
+    intentContext: ''
   },
 
   async onShow() {
@@ -85,7 +115,8 @@ Page({
 
       const conv = convRes.data;
       const styles = stylesRes.data;
-      const messages = withTimeMarks(msgsRes.data);
+      const styleMap = styles.reduce((m, s) => { m[s.id] = s; return m; }, {});
+      const messages = withTimeMarks(msgsRes.data, styleMap);
 
       wx.setNavigationBarTitle({ title: conv.crushNickname || 'crush' });
 
@@ -93,12 +124,16 @@ Page({
       if (!selectedStyleId || !styles.find(s => s.id === selectedStyleId)) {
         selectedStyleId = styles[0] ? styles[0].id : '';
       }
+      const selStyle = styleMap[selectedStyleId];
+      const selectedStyleDisplay = selStyle ? `${selStyle.emoji} ${selStyle.displayName}` : selectedStyleId;
 
       this.setData({
         loading: false,
         conversation: conv,
         styles,
+        styleMap,
         selectedStyleId,
+        selectedStyleDisplay,
         messages
       });
 
@@ -122,8 +157,9 @@ Page({
   async onSelectStyle(e) {
     const styleId = e.currentTarget.dataset.id;
     if (styleId === this.data.selectedStyleId) return;
-    this.setData({ selectedStyleId: styleId });
-    // 静默保存为该 crush 的默认风格，下次进来自动选中
+    const selStyle = this.data.styleMap[styleId];
+    const selectedStyleDisplay = selStyle ? `${selStyle.emoji} ${selStyle.displayName}` : styleId;
+    this.setData({ selectedStyleId: styleId, selectedStyleDisplay });
     try {
       const db = wx.cloud.database();
       await db.collection('conversations').doc(this.data.conversationId).update({
@@ -143,6 +179,57 @@ Page({
     wx.navigateTo({ url: '/pages/me/index' });
   },
 
+  // ============ 主动模式 ============
+  openInitiateModal() {
+    if (!this.data.selectedStyleId) {
+      wx.showToast({ title: '请先选个风格', icon: 'none' });
+      return;
+    }
+    this.setData({
+      initiateModalVisible: true,
+      selectedScenario: 'icebreak',
+      intentContext: ''
+    });
+  },
+
+  closeInitiateModal() {
+    this.setData({ initiateModalVisible: false });
+  },
+
+  onSelectScenario(e) {
+    const key = e.currentTarget.dataset.key;
+    this.setData({ selectedScenario: key });
+  },
+
+  onIntentContextInput(e) {
+    this.setData({ intentContext: e.detail.value });
+  },
+
+  noop() {
+    // 阻止弹窗内容区点击穿透到 mask
+  },
+
+  async onConfirmInitiate() {
+    const scenario = this.data.selectedScenario;
+    const context = (this.data.intentContext || '').trim();
+    if (!scenario) {
+      wx.showToast({ title: '请选一个场景', icon: 'none' });
+      return;
+    }
+    if (scenario === 'other' && !context) {
+      wx.showToast({ title: '"其他"场景请描述意图', icon: 'none' });
+      return;
+    }
+    this.closeInitiateModal();
+    await this.callGenerate({
+      type: 'initiate',
+      intent: { scenario, context },
+      styleId: this.data.selectedStyleId,
+      count: 1
+    });
+  },
+
+  // ============ 被动回复（原逻辑） ============
   async onTapSend() {
     if (this.data.sending) return;
     const text = (this.data.inputText || '').trim();
@@ -154,7 +241,12 @@ Page({
       wx.showToast({ title: '请选择回复风格', icon: 'none' });
       return;
     }
-    await this.callGenerate(text, this.data.selectedStyleId, 1, false);
+    await this.callGenerate({
+      type: 'reply',
+      crushMessage: text,
+      styleId: this.data.selectedStyleId,
+      count: 1
+    });
     this.setData({ inputText: '' });
   },
 
@@ -165,20 +257,35 @@ Page({
     if (!msg) return;
     const remaining = 3 - (msg.suggestions ? msg.suggestions.length : 0);
     if (remaining <= 0) return;
-    await this.callGenerate(msg.crushMessage, msg.styleId, remaining, true, messageId);
+    await this.callGenerate({
+      type: msg.type || 'reply',
+      crushMessage: msg.crushMessage,
+      intent: msg.intent,
+      styleId: msg.styleId,
+      count: remaining,
+      appendToMessageId: messageId
+    });
   },
 
   onRetry(e) {
     const id = e.currentTarget.dataset.id;
     const msg = this.data.messages.find(m => m._id === id);
     if (!msg) return;
-    // 移除失败记录，再重新生成
     const newMsgs = this.data.messages.filter(m => m._id !== id);
-    this.setData({ messages: withTimeMarks(newMsgs) });
-    this.callGenerate(msg.crushMessage, msg.styleId, 1, false);
+    this.setData({ messages: withTimeMarks(newMsgs, this.data.styleMap) });
+    this.callGenerate({
+      type: msg.type || 'reply',
+      crushMessage: msg.crushMessage,
+      intent: msg.intent,
+      styleId: msg.styleId,
+      count: 1
+    });
   },
 
-  async callGenerate(crushMessage, styleId, count, appendToLast, sourceMessageId) {
+  async callGenerate(opts) {
+    const { type, crushMessage = '', intent = null, styleId, count, appendToMessageId } = opts;
+    const appendToLast = !!appendToMessageId;
+
     this.setData({ sending: true });
 
     let tempId;
@@ -187,16 +294,18 @@ Page({
       const tempMsg = {
         _id: tempId,
         conversationId: this.data.conversationId,
+        type,
+        intent,
         crushMessage,
         styleId,
         suggestions: [],
         loading: true,
         createdAt: new Date()
       };
-      const newMsgs = withTimeMarks([...this.data.messages, tempMsg]);
+      const newMsgs = withTimeMarks([...this.data.messages, tempMsg], this.data.styleMap);
       this.setData({ messages: newMsgs, scrollToView: 'msg-' + tempId });
     } else {
-      const idx = this.data.messages.findIndex(m => m._id === sourceMessageId);
+      const idx = this.data.messages.findIndex(m => m._id === appendToMessageId);
       if (idx >= 0) {
         const updated = [...this.data.messages];
         updated[idx] = { ...updated[idx], loadingMore: true };
@@ -211,21 +320,22 @@ Page({
           conversationId: this.data.conversationId,
           crushMessage,
           styleId,
-          count
+          count,
+          type,
+          intent
         }
       });
 
       const result = res.result || {};
       if (!result.success) {
         const errMsg = result.hint || result.error || '生成失败';
-        // 不再弹 modal，把错误标在卡片上
         if (!appendToLast && tempId) {
           const newMsgs = this.data.messages.map(m =>
             m._id === tempId ? { ...m, loading: false, error: errMsg } : m
           );
           this.setData({ messages: newMsgs });
         } else if (appendToLast) {
-          const idx = this.data.messages.findIndex(m => m._id === sourceMessageId);
+          const idx = this.data.messages.findIndex(m => m._id === appendToMessageId);
           if (idx >= 0) {
             const updated = [...this.data.messages];
             updated[idx] = { ...updated[idx], loadingMore: false, moreError: errMsg };
@@ -238,28 +348,25 @@ Page({
       const newSuggestions = result.suggestions || [];
 
       if (!appendToLast) {
-        const realMsg = {
+        const realMsg = decorateMessage({
           _id: result.messageId,
           conversationId: this.data.conversationId,
+          type: result.type || type,
+          intent: result.intent || intent,
           crushMessage,
           styleId,
           suggestions: newSuggestions,
           createdAt: result.createdAt || new Date(),
           loading: false
-        };
+        }, this.data.styleMap);
         const newMsgs = this.data.messages.map(m => m._id === tempId ? realMsg : m);
-        this.setData({ messages: withTimeMarks(newMsgs), scrollToView: 'msg-' + realMsg._id });
+        this.setData({ messages: withTimeMarks(newMsgs, this.data.styleMap), scrollToView: 'msg-' + realMsg._id });
       } else {
-        const idx = this.data.messages.findIndex(m => m._id === sourceMessageId);
+        const idx = this.data.messages.findIndex(m => m._id === appendToMessageId);
         if (idx >= 0) {
           const merged = [...(this.data.messages[idx].suggestions || []), ...newSuggestions];
           const updated = [...this.data.messages];
-          updated[idx] = {
-            ...updated[idx],
-            suggestions: merged,
-            loadingMore: false,
-            moreError: ''
-          };
+          updated[idx] = { ...updated[idx], suggestions: merged, loadingMore: false, moreError: '' };
           this.setData({ messages: updated });
         }
       }
@@ -271,7 +378,7 @@ Page({
         );
         this.setData({ messages: newMsgs });
       } else if (appendToLast) {
-        const idx = this.data.messages.findIndex(m => m._id === sourceMessageId);
+        const idx = this.data.messages.findIndex(m => m._id === appendToMessageId);
         if (idx >= 0) {
           const updated = [...this.data.messages];
           updated[idx] = { ...updated[idx], loadingMore: false, moreError: errMsg };
@@ -328,7 +435,7 @@ Page({
         data: { deletedAt: new Date() }
       });
       const newMsgs = this.data.messages.filter(m => m._id !== id);
-      this.setData({ messages: withTimeMarks(newMsgs) });
+      this.setData({ messages: withTimeMarks(newMsgs, this.data.styleMap) });
       wx.showToast({ title: '已删除', icon: 'success' });
     } catch (err) {
       wx.showModal({

@@ -12,3 +12,13 @@ page {
   min-height: 100vh;
   box-sizing: border-box;
 }
+
+/* 全局按压反馈：所有可点元素加 .tap-feedback class 就能获得弹性反馈 */
+.tap-feedback {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.tap-feedback:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}

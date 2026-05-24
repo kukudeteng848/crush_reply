@@ -155,3 +155,26 @@
   color: #1a1a1a !important;
   border: 1rpx solid #e0e0e0 !important;
 }
+
+/* ============ 按压反馈（B） ============ */
+.btn-save,
+.btn-cancel,
+.avatar-wrap,
+.row,
+.picker-value {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-save:active,
+.btn-cancel:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+.avatar-wrap:active {
+  transform: scale(0.95);
+}
+
+.row:active {
+  background: #f7f7f7;
+}

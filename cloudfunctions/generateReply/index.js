@@ -1,4 +1,7 @@
 // 调用 DeepSeek 生成回复建议
+// 支持两种模式：
+//   type='reply'    被动回复 crush 的消息（默认）
+//   type='initiate' 主动找 crush（破冰/邀约/关心/道歉/节日/其他）
 const cloud = require('wx-server-sdk');
 const axios = require('axios');
 
@@ -8,12 +11,59 @@ const db = cloud.database();
 const DEEPSEEK_URL = 'https://api.deepseek.com/v1/chat/completions';
 const DEEPSEEK_MODEL = 'deepseek-chat';
 
+const SCENARIOS = {
+  icebreak: {
+    label: '破冰',
+    emoji: '💬',
+    description: '刚加微信不久，想自然地开启第一句话或找个轻松话题',
+    directive: '生成自然的破冰话术。避免太突兀或像查户口，建议从轻松话题切入，留下让对方有话可接的余地'
+  },
+  invite: {
+    label: '邀约',
+    emoji: '📅',
+    description: '想约 ta 一起做点什么（吃饭/看电影/出去玩等）',
+    directive: '生成自然的邀约话术。既要表达想见面的意思，又给对方拒绝的余地，不要显得迫切或绑架对方'
+  },
+  care: {
+    label: '关心',
+    emoji: '🤗',
+    description: 'ta 最近有特殊事（考试/出差/生病等），想表达关心',
+    directive: '生成体现关心的开场。要真诚不矫情、不说教、点到即止；可以问候但不要追问'
+  },
+  apology: {
+    label: '道歉',
+    emoji: '🙏',
+    description: '吵架或做错事后想主动开口和解',
+    directive: '生成诚恳的道歉/和好话术。承认问题但不卑微，给彼此台阶下，避免冷冰冰的"对不起"'
+  },
+  festival: {
+    label: '节日',
+    emoji: '🎉',
+    description: '生日/七夕/圣诞等特殊日子想送祝福',
+    directive: '根据今天日期判断当前或最近的节日（如七夕、圣诞、元旦、春节、中秋、生日等）。生成有心意的祝福话术，避免群发模板感，体现对 ta 的个人化关注'
+  },
+  other: {
+    label: '其他',
+    emoji: '💡',
+    description: '其他主动想表达的事',
+    directive: '根据用户描述的具体意图生成自然的开场话术'
+  }
+};
+
 exports.main = async (event) => {
   const { conversationId, crushMessage, styleId } = event;
+  const type = event.type === 'initiate' ? 'initiate' : 'reply';
+  const intent = event.intent || null;
   const count = Math.min(Math.max(Number(event.count) || 1, 1), 3);
 
-  if (!conversationId || !crushMessage || !styleId) {
+  if (!conversationId || !styleId) {
     return { success: false, error: 'missing_params' };
+  }
+  if (type === 'reply' && !crushMessage) {
+    return { success: false, error: 'missing_crush_message' };
+  }
+  if (type === 'initiate' && (!intent || !intent.scenario)) {
+    return { success: false, error: 'missing_intent' };
   }
 
   const apiKey = process.env.DEEPSEEK_API_KEY;
@@ -25,7 +75,6 @@ exports.main = async (event) => {
     };
   }
 
-  // 1. 取对话信息（crush 资料）
   let conv;
   try {
     const res = await db.collection('conversations').doc(conversationId).get();
@@ -34,17 +83,16 @@ exports.main = async (event) => {
     return { success: false, error: 'conversation_not_found', detail: err.errMsg };
   }
 
-  // 2. 取风格指令
   const styleRes = await db.collection('styles').where({ id: styleId }).limit(1).get();
   if (!styleRes.data.length) {
     return { success: false, error: 'style_not_found' };
   }
   const style = styleRes.data[0];
 
-  // 3. 拼 prompt
-  const prompt = buildPrompt(conv, style, crushMessage, count);
+  const prompt = type === 'initiate'
+    ? buildInitiatePrompt(conv, style, intent, count)
+    : buildReplyPrompt(conv, style, crushMessage, count);
 
-  // 4. 调 DeepSeek
   let suggestions;
   try {
     const apiRes = await axios.post(DEEPSEEK_URL, {
@@ -78,14 +126,15 @@ exports.main = async (event) => {
     };
   }
 
-  // 5. 写 message 记录
   const wxContext = cloud.getWXContext();
   const now = new Date();
   const msgAdd = await db.collection('messages').add({
     data: {
       _openid: wxContext.OPENID,
       conversationId,
-      crushMessage,
+      type,
+      intent: type === 'initiate' ? intent : null,
+      crushMessage: type === 'reply' ? crushMessage : '',
       styleId,
       suggestions,
       selectedIndex: null,
@@ -94,16 +143,15 @@ exports.main = async (event) => {
     }
   });
 
-  // 6. 更新 conversation 的最近消息
+  // 更新会话最近活动
+  const preview = type === 'initiate'
+    ? `💡 主动·${(SCENARIOS[intent.scenario] || SCENARIOS.other).label}`
+    : crushMessage.slice(0, 30);
   try {
     await db.collection('conversations').doc(conversationId).update({
-      data: {
-        lastMessageAt: now,
-        lastMessagePreview: crushMessage.slice(0, 30)
-      }
+      data: { lastMessageAt: now, lastMessagePreview: preview }
     });
   } catch (err) {
-    // 更新失败不影响主流程
     console.warn('update conv lastMessage failed:', err.errMsg);
   }
 
@@ -112,11 +160,13 @@ exports.main = async (event) => {
     messageId: msgAdd._id,
     suggestions,
     styleId,
+    type,
+    intent,
     createdAt: now
   };
 };
 
-function buildPrompt(conv, style, crushMessage, count) {
+function buildReplyPrompt(conv, style, crushMessage, count) {
   const lines = [];
   lines.push('你是一个微信聊天小助手，帮我回复 crush（暗恋对象）的消息。请假装是我本人，按要求生成回复。');
   lines.push('');
@@ -136,11 +186,55 @@ function buildPrompt(conv, style, crushMessage, count) {
   lines.push('1. 假装是我（第一人称口吻）');
   lines.push('2. 像微信聊天那样自然简洁，每条不超过 30 个字');
   if (count > 1) {
-    lines.push('3. 多条之间要有差异感，给我多种选择');
+    lines.push('3. 多条之间要有差异感');
     lines.push('4. 直接输出回复内容，不要编号、不要解释、不要加引号');
     lines.push(`5. 每条占一行，共 ${count} 行`);
   } else {
     lines.push('3. 直接输出回复内容，不要解释、不要加引号');
+  }
+  lines.push('');
+  lines.push('直接开始输出：');
+  return lines.join('\n');
+}
+
+function buildInitiatePrompt(conv, style, intent, count) {
+  const scenario = SCENARIOS[intent.scenario] || SCENARIOS.other;
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
+
+  const lines = [];
+  lines.push('你是一个微信聊天小助手，帮我主动给 crush（暗恋对象）发开场消息。请假装是我本人。');
+  lines.push('');
+  lines.push('【我的 crush 资料】');
+  lines.push(`- 昵称：${conv.crushNickname || 'crush'}`);
+  lines.push(`- 性别：${conv.crushGender || '未知'}`);
+  if (conv.crushMbti) lines.push(`- MBTI：${conv.crushMbti}`);
+  if (conv.crushZodiac) lines.push(`- 星座：${conv.crushZodiac}`);
+  lines.push('');
+  lines.push(`【今天日期】${todayStr}`);
+  lines.push('');
+  lines.push(`【主动场景】${scenario.emoji} ${scenario.label}`);
+  lines.push(scenario.description);
+  lines.push(scenario.directive);
+  if (intent.context) {
+    lines.push('');
+    lines.push('【具体想说什么】');
+    lines.push(intent.context);
+  }
+  lines.push('');
+  lines.push('【语气风格】');
+  lines.push(style.promptInstruction);
+  lines.push('');
+  lines.push(`请生成 ${count} 条不同的开场白，要求：`);
+  lines.push('1. 假装是我（第一人称口吻），是我主动找 ta');
+  lines.push('2. 像微信主动找人聊天那样自然，每条不超过 30 字');
+  lines.push('3. 这是开场白，ta 还没回话，不要假设 ta 说过什么');
+  if (count > 1) {
+    lines.push('4. 多条之间要有差异感');
+    lines.push('5. 直接输出内容，不要编号、不要解释、不要加引号');
+    lines.push(`6. 每条占一行，共 ${count} 行`);
+  } else {
+    lines.push('4. 直接输出内容，不要解释、不要加引号');
   }
   lines.push('');
   lines.push('直接开始输出：');
