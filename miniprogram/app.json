@@ -11,7 +11,7 @@
     "backgroundTextStyle": "light",
     "backgroundColor": "#ededed",
     "navigationBarBackgroundColor": "#ededed",
-    "navigationBarTitleText": "Crush Reply",
+    "navigationBarTitleText": "Crush 说",
     "navigationBarTextStyle": "black"
   },
   "sitemapLocation": "sitemap.json"
