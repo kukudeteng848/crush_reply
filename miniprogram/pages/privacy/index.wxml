@@ -1,0 +1,94 @@
+<view class="container">
+  <view class="header">
+    <view class="title">隐私政策</view>
+    <view class="updated">最后更新：{{updatedAt}}</view>
+  </view>
+
+  <view class="intro">
+    我们重视你的隐私。本政策说明 crush 说（以下简称"本小程序"）会收集你的哪些信息、如何使用、如何保护、以及你的权利。请仔细阅读。
+  </view>
+
+  <view class="section">
+    <view class="section-title">一、我们收集哪些信息</view>
+    <view class="paragraph">
+      为了向你提供"AI 对话灵感生成"服务，我们会收集以下信息：
+    </view>
+    <view class="list">
+      <view class="list-item">1. <text class="bold">微信 OpenID</text>：你在本小程序的唯一身份标识，用于区分不同用户并保存数据。我们不获取你的微信昵称、手机号、地理位置等任何敏感信息。</view>
+      <view class="list-item">2. <text class="bold">你输入的内容</text>：你在"crush 资料"和"聊天"中输入的文本（昵称、性别、消息等）。</view>
+      <view class="list-item">3. <text class="bold">你上传的头像</text>：当你主动选择上传头像时收集，存储在云端。</view>
+      <view class="list-item">4. <text class="bold">使用记录</text>：你与 AI 的对话历史，用于在小程序内展示给你查看。</view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">二、信息如何被使用</view>
+    <view class="paragraph">
+      你输入的对话内容会被发送给第三方 AI 服务提供商 <text class="bold">DeepSeek</text> 处理，用于生成回复建议。我们不会将信息用于其他商业目的（如广告投放、转售）。
+    </view>
+    <view class="paragraph">
+      你的所有数据按 OpenID 严格隔离，<text class="bold">其他用户无法看到你的内容</text>。
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">三、信息存储</view>
+    <view class="paragraph">
+      你的数据存储在<text class="bold">腾讯云（微信云开发）</text>提供的云数据库和云存储中，仅在境内服务器。我们采用云开发标准安全机制进行保护。
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">四、第三方共享</view>
+    <view class="paragraph">
+      除以下情形外，我们不会向第三方共享你的信息：
+    </view>
+    <view class="list">
+      <view class="list-item">• 你输入的对话文本会发送给 DeepSeek 进行 AI 处理（仅用于本次请求）</view>
+      <view class="list-item">• 法律法规要求或政府主管部门要求时</view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">五、内容安全检测</view>
+    <view class="paragraph">
+      为确保平台健康，你输入的内容和 AI 生成的内容会通过微信官方<text class="bold">内容安全 API</text>进行检测。检测仅用于过滤违法违规内容，不会用于其他用途。
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">六、你的权利</view>
+    <view class="list">
+      <view class="list-item">• <text class="bold">删除聊天记录</text>：长按消息可删除单条对话</view>
+      <view class="list-item">• <text class="bold">删除 crush</text>：长按首页卡片可删除某个 crush 及其全部聊天</view>
+      <view class="list-item">• <text class="bold">修改昵称/头像</text>：在"我的资料"页随时修改</view>
+      <view class="list-item">• <text class="bold">彻底注销账号</text>：请通过下方联系方式联系我们</view>
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">七、未成年人保护</view>
+    <view class="paragraph">
+      本小程序面向 18 岁及以上成年用户。未成年人请在监护人陪同下使用，或停止使用本服务。
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">八、政策变更</view>
+    <view class="paragraph">
+      本政策可能随服务调整而更新，更新后会在小程序内通知。继续使用即视为同意更新版本。
+    </view>
+  </view>
+
+  <view class="section">
+    <view class="section-title">九、联系我们</view>
+    <view class="paragraph">
+      如有疑问、投诉或需要注销账号，请通过项目 GitHub Issues 反馈：
+    </view>
+    <view class="paragraph mono">
+      https://github.com/kukudeteng848/crush_reply/issues
+    </view>
+  </view>
+
+  <view class="footer">— 全文完 —</view>
+</view>

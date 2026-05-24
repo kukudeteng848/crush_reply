@@ -32,6 +32,8 @@ Page({
       return;
     }
     try {
+      // 隐私协议弹窗必须在页面里触发（不能在 app.onLaunch）
+      await app.ensurePrivacyAgreed();
       if (app.globalData.loginPromise) {
         await app.globalData.loginPromise;
       }
