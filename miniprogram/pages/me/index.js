@@ -88,6 +88,10 @@ Page({
     });
   },
 
+  onTapProfile() {
+    wx.navigateTo({ url: '/pages/me-edit/index' });
+  },
+
   onTapPrivacy() {
     wx.navigateTo({ url: '/pages/privacy/index' });
   },

@@ -2,6 +2,11 @@
 // 支持两种模式：
 //   type='reply'    被动回复 crush 的消息（默认）
 //   type='initiate' 主动找 crush（破冰/邀约/关心/道歉/节日/其他）
+//
+// V2「灵魂共振」升级：
+//   1. 三层 Prompt：总纲（聊天哲学）+ 人物画像（双方资料）+ 近期对话记忆 + 本轮任务
+//   2. 近期记忆：自动取最近若干轮对话（含「我选中/兜底的回复」）拼进 prompt，让上下文连贯
+//   3. 关系阶段：按用户标注或对话轮数推断亲密度档位，动态调整聊天策略
 const cloud = require('wx-server-sdk');
 const axios = require('axios');
 
@@ -10,6 +15,10 @@ const db = cloud.database();
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/v1/chat/completions';
 const DEEPSEEK_MODEL = 'deepseek-chat';
+
+// 近期记忆：最多回看多少轮、拼进 prompt 的最多行数
+const HISTORY_FETCH_LIMIT = 12; // 多查几条，给被排除/失败的空轮留缓冲
+const HISTORY_MAX_LINES = 20;   // 约等于最近 10 轮对话
 
 // 内容安全检测：调用微信 msgSecCheck
 // 返回 { safe: bool, label?: string }
@@ -72,6 +81,158 @@ const SCENARIOS = {
   }
 };
 
+// ============ 关系阶段：档位 + 对应策略 ============
+const STAGE_STRATEGY = {
+  初识期: '以安全区(日程)和舒适区(兴趣)为主（约 80%），只轻度试探三观；保持礼貌和分寸，多给对方表达和接话的空间，不要过快拉近距离。',
+  熟悉期: '安全区+舒适区 与 深水区(观点)+进阶区(情感) 各占一半；可以开始交换一些看法、开适度的玩笑，逐步加深了解。',
+  暧昧期: '偏重灵魂共振与情感连接（约 70%），生活渗透为辅；可以有适度的暧昧张力和心动感，但仍要尊重对方的节奏，不越界。'
+};
+
+// 用户在资料里标注的关系阶段 → 档位映射
+const RELATION_STAGE_MAP = {
+  初识: '初识期',
+  朋友: '熟悉期',
+  暧昧中: '暧昧期',
+  在追: '暧昧期'
+};
+
+function deriveStage(conv, roundCount) {
+  if (conv && conv.relationStage && RELATION_STAGE_MAP[conv.relationStage]) {
+    return RELATION_STAGE_MAP[conv.relationStage];
+  }
+  if (roundCount < 20) return '初识期';
+  if (roundCount <= 50) return '熟悉期';
+  return '暧昧期';
+}
+
+// 把一个数组字段安全转成「、」连接的字符串，空则返回 ''
+function joinTags(v) {
+  if (!Array.isArray(v)) return '';
+  const arr = v.filter(x => x && String(x).trim());
+  return arr.join('、');
+}
+
+// 仅当有值时才往 lines 推一行，避免把空字段写成「未知」污染 prompt
+function pushIf(lines, label, value) {
+  const v = value && String(value).trim();
+  if (v) lines.push(`- ${label}：${v}`);
+}
+
+// ============ 第一层：总纲 Prompt（统领所有对话）============
+function buildCorePrompt(stage) {
+  const lines = [];
+  lines.push('你不是在扮演 AI 助手，你就是「我」本人在微信上跟 crush（我喜欢/暗恋的人）聊天。');
+  lines.push('请基于下面的资料和聊天记录，用「我」的第一人称口吻生成回复，目标是自然地加深彼此的了解和信赖。');
+  lines.push('');
+  lines.push('【底层聊天哲学】');
+  lines.push('一段舒适的长期关系里，每天聊的内容大致分四块：');
+  lines.push('- 日程（约20%）·安全区：用碎片拼出对方的生活画像。别问「吃了吗/下班了吗」这类机械寒暄，而是先分享自己的状态、留出让对方接话的口子。');
+  lines.push('- 兴趣爱好（约20%）·舒适区：发掘对方一聊就停不下来的爱好，为以后见面/送礼埋伏笔。');
+  lines.push('- 观点三观（约30%）·深水区：借热点或别人的故事，自然地交换看法、价值观、感情观，制造灵魂共振。');
+  lines.push('- 情感需求（约30%）·进阶区：接住对方的情绪比抛新话题更重要。先识别 ta 此刻要的是安慰、是陪伴、还是认可，再回应。');
+  lines.push('整体配比约等于「60% 灵魂共振 + 40% 生活渗透」。');
+  lines.push('');
+  lines.push(`【当前关系阶段】${stage}`);
+  lines.push(STAGE_STRATEGY[stage] || STAGE_STRATEGY.初识期);
+  lines.push('');
+  lines.push('【铁律——让回复像真人，而不是 AI】');
+  lines.push('1. 口语化：像微信里随手打字，可以有口头语、语气词，但不要堆「哈哈哈」、不滥用感叹号、不用书面腔。');
+  lines.push('2. 留钩子：尽量给对方留个能接的话头，但不要连环追问，别像查户口/审讯。');
+  lines.push('3. 看阶段：按上面的关系阶段控制亲密度和话题深度，循序渐进，不要一上来就过火。');
+  lines.push('4. 用上资料：自然地呼应对方的爱好、性格、最近聊过的事，但别生硬地报菜名式罗列。');
+  lines.push('5. 不要输出任何解释、不要加引号、不要写「作为AI」之类的话。');
+  return lines.join('\n');
+}
+
+// ============ 第二层：人物画像（双方资料，只拼有值的）============
+function buildProfileBlock(conv, user) {
+  const lines = [];
+  lines.push('【Ta（我的 crush）的资料】');
+  pushIf(lines, '昵称', conv.crushNickname || 'crush');
+  pushIf(lines, '性别', conv.crushGender);
+  pushIf(lines, '年龄段', conv.crushAge);
+  pushIf(lines, 'MBTI', conv.crushMbti);
+  pushIf(lines, '星座', conv.crushZodiac);
+  pushIf(lines, '兴趣爱好', joinTags(conv.crushHobbies));
+  pushIf(lines, 'Ta 最近提过', conv.crushRecentMentions);
+  pushIf(lines, '性格印象', joinTags(conv.crushPersonality));
+  pushIf(lines, '聊天风格', joinTags(conv.crushChatStyle));
+  pushIf(lines, '认识多久', conv.knownDuration);
+  pushIf(lines, '关系阶段', conv.relationStage);
+  pushIf(lines, '见面情况', conv.metInPerson);
+
+  // AI 沉淀出来的 crush 特征（Phase 2 记忆系统写入，此处有就用）
+  const insights = conv.crushInsights || '';
+  if (insights && String(insights).trim()) {
+    lines.push('');
+    lines.push('【从过往对话中观察到的 Ta】');
+    lines.push(String(insights).trim());
+  }
+
+  // 「我」的资料：帮助 AI 用我的口吻、呼应共同点（按隐私约定不传我的昵称）
+  const meLines = [];
+  pushIf(meLines, '性别', user && user.gender);
+  pushIf(meLines, '年龄段', user && user.age);
+  pushIf(meLines, 'MBTI', user && user.mbti);
+  pushIf(meLines, '星座', user && user.zodiac);
+  pushIf(meLines, '兴趣爱好', user && joinTags(user.hobbies));
+  pushIf(meLines, '我最近在追', user && user.recentInto);
+  pushIf(meLines, '职业方向', user && user.occupation);
+  pushIf(meLines, '所在城市', user && user.city);
+  pushIf(meLines, '我的聊天习惯', user && joinTags(user.chatHabits));
+  if (meLines.length) {
+    lines.push('');
+    lines.push('【我自己的资料（用来模仿我的口吻、找共同点）】');
+    lines.push(...meLines);
+  }
+
+  return lines.join('\n');
+}
+
+// ============ 第三层：近期对话记忆 ============
+// 取最近若干轮，拼成「Ta：xxx / 我：xxx」。
+// 「我」那句优先用选中的回复(selectedText)，没选则兜底用第一条建议(suggestions[0])，
+// 整轮没有任何内容（失败空轮）则跳过，保证记忆不断档也不塞脏数据。
+async function fetchHistory(conversationId, excludeId) {
+  let rows;
+  try {
+    const res = await db.collection('messages')
+      .where({ conversationId, deletedAt: null })
+      .orderBy('createdAt', 'desc')
+      .limit(HISTORY_FETCH_LIMIT)
+      .get();
+    rows = res.data || [];
+  } catch (err) {
+    console.warn('[fetchHistory] failed:', err.errMsg || err.message);
+    return [];
+  }
+
+  rows = rows.filter(m => m._id !== excludeId).reverse(); // 回到时间正序
+
+  const turns = [];
+  for (const m of rows) {
+    const myReply =
+      (m.selectedText && String(m.selectedText).trim()) ||
+      (Array.isArray(m.suggestions) && m.suggestions[0]) ||
+      '';
+    if (m.type === 'initiate') {
+      if (myReply) turns.push(`我（主动）：${myReply}`);
+    } else {
+      if (m.crushMessage) turns.push(`Ta：${m.crushMessage}`);
+      if (myReply) turns.push(`我：${myReply}`);
+    }
+  }
+  return turns.slice(-HISTORY_MAX_LINES);
+}
+
+function buildHistoryBlock(historyLines) {
+  if (!historyLines || !historyLines.length) return '';
+  const lines = [];
+  lines.push('【最近的聊天记录（越往下越新，「我」那几句是你之前的口吻，请保持一致）】');
+  lines.push(...historyLines);
+  return lines.join('\n');
+}
+
 exports.main = async (event) => {
   const { conversationId, crushMessage, styleId } = event;
   const type = event.type === 'initiate' ? 'initiate' : 'reply';
@@ -132,9 +293,33 @@ exports.main = async (event) => {
   }
   const style = styleRes.data[0];
 
+  // 「我」的资料（用于模仿口吻 / 找共同点）
+  let user = {};
+  try {
+    const uRes = await db.collection('users').where({ _openid: openid }).limit(1).get();
+    if (uRes.data.length) user = uRes.data[0];
+  } catch (err) {
+    console.warn('[generateReply] load user failed:', err.errMsg || err.message);
+  }
+
+  // 关系阶段：按对话轮数 + 用户标注推断
+  let roundCount = 0;
+  try {
+    const cntRes = await db.collection('messages')
+      .where({ conversationId, deletedAt: null })
+      .count();
+    roundCount = cntRes.total || 0;
+  } catch (err) {
+    // 取不到就当 0，走初识期
+  }
+  const stage = deriveStage(conv, roundCount);
+
+  // 近期对话记忆
+  const historyLines = await fetchHistory(conversationId, appendToMessageId);
+
   const prompt = type === 'initiate'
-    ? buildInitiatePrompt(conv, style, intent, count)
-    : buildReplyPrompt(conv, style, crushMessage, count);
+    ? buildInitiatePrompt(conv, user, style, intent, count, historyLines, stage)
+    : buildReplyPrompt(conv, user, style, crushMessage, count, historyLines, stage);
 
   let suggestions;
   try {
@@ -219,6 +404,7 @@ exports.main = async (event) => {
       styleId,
       suggestions,
       selectedIndex: null,
+      selectedText: '',
       createdAt: now,
       deletedAt: null
     }
@@ -247,27 +433,30 @@ exports.main = async (event) => {
   };
 };
 
-function buildReplyPrompt(conv, style, crushMessage, count) {
+function buildReplyPrompt(conv, user, style, crushMessage, count, historyLines, stage) {
   const lines = [];
-  lines.push('你是一个微信聊天小助手，帮我回复 crush（暗恋对象）的消息。请假装是我本人，按要求生成回复。');
+  lines.push(buildCorePrompt(stage));
   lines.push('');
-  lines.push('【我的 crush 资料】');
-  lines.push(`- 昵称：${conv.crushNickname || 'crush'}`);
-  lines.push(`- 性别：${conv.crushGender || '未知'}`);
-  if (conv.crushMbti) lines.push(`- MBTI：${conv.crushMbti}`);
-  if (conv.crushZodiac) lines.push(`- 星座：${conv.crushZodiac}`);
+  lines.push(buildProfileBlock(conv, user));
+
+  const historyBlock = buildHistoryBlock(historyLines);
+  if (historyBlock) {
+    lines.push('');
+    lines.push(historyBlock);
+  }
+
   lines.push('');
-  lines.push('【回复风格】');
+  lines.push('【本轮回复风格】');
   lines.push(style.promptInstruction);
   lines.push('');
   lines.push('【Ta 刚才发的消息】');
   lines.push(crushMessage);
   lines.push('');
   lines.push(`请生成 ${count} 条回复建议，要求：`);
-  lines.push('1. 假装是我（第一人称口吻）');
+  lines.push('1. 用「我」的第一人称口吻，承接上面的聊天记录，别和前文矛盾');
   lines.push('2. 像微信聊天那样自然简洁，每条不超过 30 个字');
   if (count > 1) {
-    lines.push('3. 多条之间要有差异感');
+    lines.push('3. 多条之间要有差异感（角度或语气不同）');
     lines.push('4. 直接输出回复内容，不要编号、不要解释、不要加引号');
     lines.push(`5. 每条占一行，共 ${count} 行`);
   } else {
@@ -278,19 +467,22 @@ function buildReplyPrompt(conv, style, crushMessage, count) {
   return lines.join('\n');
 }
 
-function buildInitiatePrompt(conv, style, intent, count) {
+function buildInitiatePrompt(conv, user, style, intent, count, historyLines, stage) {
   const scenario = SCENARIOS[intent.scenario] || SCENARIOS.other;
   const today = new Date();
   const todayStr = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
 
   const lines = [];
-  lines.push('你是一个微信聊天小助手，帮我主动给 crush（暗恋对象）发开场消息。请假装是我本人。');
+  lines.push(buildCorePrompt(stage));
   lines.push('');
-  lines.push('【我的 crush 资料】');
-  lines.push(`- 昵称：${conv.crushNickname || 'crush'}`);
-  lines.push(`- 性别：${conv.crushGender || '未知'}`);
-  if (conv.crushMbti) lines.push(`- MBTI：${conv.crushMbti}`);
-  if (conv.crushZodiac) lines.push(`- 星座：${conv.crushZodiac}`);
+  lines.push(buildProfileBlock(conv, user));
+
+  const historyBlock = buildHistoryBlock(historyLines);
+  if (historyBlock) {
+    lines.push('');
+    lines.push(historyBlock);
+  }
+
   lines.push('');
   lines.push(`【今天日期】${todayStr}`);
   lines.push('');
@@ -307,9 +499,9 @@ function buildInitiatePrompt(conv, style, intent, count) {
   lines.push(style.promptInstruction);
   lines.push('');
   lines.push(`请生成 ${count} 条不同的开场白，要求：`);
-  lines.push('1. 假装是我（第一人称口吻），是我主动找 ta');
+  lines.push('1. 用「我」的第一人称口吻，是我主动找 ta；如果上面有聊天记录，要自然衔接，别重复说过的话');
   lines.push('2. 像微信主动找人聊天那样自然，每条不超过 30 字');
-  lines.push('3. 这是开场白，ta 还没回话，不要假设 ta 说过什么');
+  lines.push('3. 这是我主动发的开场白，不要假设 ta 刚说过什么');
   if (count > 1) {
     lines.push('4. 多条之间要有差异感');
     lines.push('5. 直接输出内容，不要编号、不要解释、不要加引号');

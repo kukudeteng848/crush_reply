@@ -178,3 +178,71 @@
 .row:active {
   background: #f7f7f7;
 }
+
+/* ============ 字段块 + 标签胶囊（V2 团购式输入） ============ */
+.field {
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.field:last-child {
+  border-bottom: none;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.field-label {
+  font-size: 28rpx;
+  color: #1a1a1a;
+  margin-bottom: 20rpx;
+}
+
+.field-row .field-label {
+  margin-bottom: 0;
+}
+
+.field-input {
+  font-size: 30rpx;
+  color: #1a1a1a;
+  width: 100%;
+}
+
+.field-input::placeholder {
+  color: #ccc;
+}
+
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.chip {
+  padding: 12rpx 28rpx;
+  background: #f5f5f5;
+  border: 1rpx solid #ebebeb;
+  border-radius: 32rpx;
+  font-size: 26rpx;
+  color: #555;
+  transition: all 0.15s ease;
+}
+
+.chip:active {
+  transform: scale(0.95);
+}
+
+.chip-on {
+  background: #e6f7ee;
+  border-color: #07c160;
+  color: #07c160;
+  font-weight: 500;
+}
+
+.chip-add {
+  color: #999;
+  border-style: dashed;
+}

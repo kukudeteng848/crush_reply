@@ -23,6 +23,16 @@
   </view>
 
   <view class="card">
+    <view class="row" bindtap="onTapProfile">
+      <text class="label">我的恋爱档案</text>
+      <view class="value-wrap">
+        <text class="value">让 AI 更像你</text>
+        <text class="chevron">›</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
     <view class="row" bindtap="onTapTerms">
       <text class="label">用户协议</text>
       <view class="value-wrap"><text class="chevron">›</text></view>
@@ -34,6 +44,6 @@
   </view>
 
   <view class="tip">
-    昵称和头像会在聊天页的右侧（也就是「我」这一边）显示。{'\n'}AI 不会知道你的昵称，只用于 UI 展示。
+    昵称和头像只在聊天页「我」这一边展示，AI 不会知道。{'\n'}「我的恋爱档案」里的资料才会用来让 AI 模仿你的口吻、找共同点。
   </view>
 </view>
