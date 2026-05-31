@@ -10,6 +10,16 @@ const SCENARIOS = [
 
 const SCENARIO_MAP = SCENARIOS.reduce((m, s) => { m[s.key] = s; return m; }, {});
 
+// 计算一条消息在首页列表里显示的预览文案（跟云函数 generateReply 里的逻辑保持一致）
+function computePreview(m) {
+  if (!m) return '';
+  if (m.type === 'initiate') {
+    const s = SCENARIO_MAP[(m.intent && m.intent.scenario)] || SCENARIO_MAP.other;
+    return `💡 主动·${s.label}`;
+  }
+  return (m.crushMessage || '').slice(0, 30);
+}
+
 function formatTimeMark(date) {
   if (!date) return '';
   const d = new Date(date);
@@ -38,7 +48,9 @@ function decorateMessage(m, styleMap) {
   }
   const s = styleMap && styleMap[m.styleId];
   const styleDisplay = s ? `${s.emoji} ${s.displayName}` : (m.styleId || '');
-  return { ...m, typeLabel, styleDisplay };
+  // 防御：旧数据或异常情况下 suggestions 可能缺失，兜底成数组避免渲染出空白卡片
+  const suggestions = Array.isArray(m.suggestions) ? m.suggestions : [];
+  return { ...m, suggestions, typeLabel, styleDisplay };
 }
 
 function withTimeMarks(messages, styleMap) {
@@ -322,7 +334,9 @@ Page({
           styleId,
           count,
           type,
-          intent
+          intent,
+          // 传给云函数：有值表示「追加到这条消息」，云函数就 update 而不是新建记录
+          appendToMessageId: appendToMessageId || null
         }
       });
 
@@ -403,7 +417,8 @@ Page({
 
   onLongPressMessage(e) {
     const id = e.currentTarget.dataset.id;
-    if (!id || String(id).startsWith('temp-')) return;
+    if (!id) return;
+    // 临时消息（temp-，比如生成失败/卡住留下的卡片）也允许删，否则会残留一个删不掉的空框
     wx.showActionSheet({
       itemList: ['删除这一轮对话'],
       success: (res) => {
@@ -429,20 +444,43 @@ Page({
   },
 
   async softDeleteMessage(id) {
+    const isTemp = String(id).startsWith('temp-');
     try {
-      const db = wx.cloud.database();
-      await db.collection('messages').doc(id).update({
-        data: { deletedAt: new Date() }
-      });
-      const newMsgs = this.data.messages.filter(m => m._id !== id);
-      this.setData({ messages: withTimeMarks(newMsgs, this.data.styleMap) });
+      // 临时消息不在数据库里，只需从本地列表移除；真实消息才软删
+      if (!isTemp) {
+        const db = wx.cloud.database();
+        await db.collection('messages').doc(id).update({
+          data: { deletedAt: new Date() }
+        });
+      }
+      const remaining = this.data.messages.filter(m => m._id !== id);
+      this.setData({ messages: withTimeMarks(remaining, this.data.styleMap) });
       wx.showToast({ title: '已删除', icon: 'success' });
+      // 同步首页列表的"最新消息"预览
+      await this.syncConversationPreview(remaining);
     } catch (err) {
       wx.showModal({
         title: '删除失败',
         content: (err && err.errMsg) || String(err),
         showCancel: false
       });
+    }
+  },
+
+  // 根据当前剩余消息，回写 conversations 表的 lastMessagePreview / lastMessageAt
+  // 这样返回首页时列表能显示正确的最新消息（删空时回到"还没有聊天"状态）
+  async syncConversationPreview(messages) {
+    const real = (messages || []).filter(m => !String(m._id).startsWith('temp-'));
+    const last = real[real.length - 1];
+    const data = last
+      ? { lastMessagePreview: computePreview(last), lastMessageAt: last.createdAt || null }
+      : { lastMessagePreview: '', lastMessageAt: null };
+    try {
+      const db = wx.cloud.database();
+      await db.collection('conversations').doc(this.data.conversationId).update({ data });
+    } catch (err) {
+      // 预览同步失败不影响删除本身，仅记日志
+      console.warn('[chat] sync conv preview failed:', err && err.errMsg);
     }
   }
 });

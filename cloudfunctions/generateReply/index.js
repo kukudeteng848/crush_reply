@@ -77,6 +77,8 @@ exports.main = async (event) => {
   const type = event.type === 'initiate' ? 'initiate' : 'reply';
   const intent = event.intent || null;
   const count = Math.min(Math.max(Number(event.count) || 1, 1), 3);
+  // 「再来 N 条」会带上已有那条消息的 id：表示追加建议，而不是新建一轮对话
+  const appendToMessageId = event.appendToMessageId || null;
 
   if (!conversationId || !styleId) {
     return { success: false, error: 'missing_params' };
@@ -183,6 +185,30 @@ exports.main = async (event) => {
   }
 
   const now = new Date();
+
+  // ============ 追加模式：「再来 N 条」 ============
+  // 把新建议合并进已有那条消息，不新建记录（否则重进聊天页会出现重复的一轮对话）
+  if (appendToMessageId) {
+    const _ = db.command;
+    try {
+      await db.collection('messages').doc(appendToMessageId).update({
+        data: { suggestions: _.push(suggestions) }
+      });
+    } catch (err) {
+      return { success: false, error: 'append_failed', detail: err.errMsg };
+    }
+    return {
+      success: true,
+      messageId: appendToMessageId,
+      suggestions, // 只返回这次新生成的几条，前端自行合并到原卡片
+      styleId,
+      type,
+      intent,
+      appended: true
+    };
+  }
+
+  // ============ 正常模式：新建一轮对话 ============
   const msgAdd = await db.collection('messages').add({
     data: {
       _openid: openid,
