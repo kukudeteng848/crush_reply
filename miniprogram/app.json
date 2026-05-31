@@ -4,6 +4,7 @@
     "pages/crush-edit/index",
     "pages/chat/index",
     "pages/me/index",
+    "pages/me-edit/index",
     "pages/privacy/index",
     "pages/terms/index"
   ],

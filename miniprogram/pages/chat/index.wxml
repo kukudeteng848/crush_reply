@@ -92,7 +92,7 @@
                 class="suggestion"
               >
                 <text class="suggestion-text">{{sug}}</text>
-                <view class="suggestion-copy" data-text="{{sug}}" catchtap="onTapCopy">复制</view>
+                <view class="suggestion-copy" data-text="{{sug}}" data-msgid="{{item._id}}" data-index="{{sIdx}}" catchtap="onTapCopy">复制</view>
               </view>
 
               <view

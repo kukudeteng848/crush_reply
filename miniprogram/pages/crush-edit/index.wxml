@@ -7,33 +7,44 @@
     <view class="avatar-hint">{{uploading ? '上传中...' : '点击设置头像（可选）'}}</view>
   </view>
 
+  <!-- 基本信息 -->
   <view class="section-title">基本信息</view>
   <view class="card">
-    <view class="row">
-      <text class="label">昵称</text>
-      <input
-        class="input"
-        placeholder="crush"
-        value="{{nickname}}"
-        bindinput="onNicknameInput"
-        maxlength="20"
-      />
+    <view class="field">
+      <view class="field-label">昵称 <text class="optional">(选填，默认 crush)</text></view>
+      <input class="field-input" placeholder="ta 的昵称" value="{{nickname}}" bindinput="onNicknameInput" maxlength="20" />
     </view>
-  </view>
 
-  <view class="section-title">Ta 的资料</view>
-  <view class="card">
-    <view class="row">
-      <text class="label">性别 <text class="required">*</text></text>
-      <picker mode="selector" range="{{genderList}}" value="{{genderIndex}}" bindchange="onGenderChange">
-        <view class="picker-value">
-          <text class="{{!gender ? 'placeholder' : ''}}">{{gender || '请选择'}}</text>
-          <text class="chevron">›</text>
-        </view>
-      </picker>
+    <view class="field">
+      <view class="field-label">性别 <text class="required">*</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{genderList}}"
+          wx:key="*this"
+          class="chip {{gender === item ? 'chip-on' : ''}}"
+          data-field="gender"
+          data-value="{{item}}"
+          bindtap="onToggleSingle"
+        >{{item}}</view>
+      </view>
     </view>
-    <view class="row">
-      <text class="label">MBTI <text class="optional">(选填)</text></text>
+
+    <view class="field">
+      <view class="field-label">年龄段 <text class="optional">(选填)</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{ageList}}"
+          wx:key="*this"
+          class="chip {{age === item ? 'chip-on' : ''}}"
+          data-field="age"
+          data-value="{{item}}"
+          bindtap="onToggleSingle"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="field field-row">
+      <view class="field-label">MBTI <text class="optional">(选填)</text></view>
       <picker mode="selector" range="{{mbtiList}}" value="{{mbtiIndex}}" bindchange="onMbtiChange">
         <view class="picker-value">
           <text class="{{!mbti ? 'placeholder' : ''}}">{{mbti || '请选择'}}</text>
@@ -41,8 +52,9 @@
         </view>
       </picker>
     </view>
-    <view class="row">
-      <text class="label">星座 <text class="optional">(选填)</text></text>
+
+    <view class="field field-row">
+      <view class="field-label">星座 <text class="optional">(选填)</text></view>
       <picker mode="selector" range="{{zodiacList}}" value="{{zodiacIndex}}" bindchange="onZodiacChange">
         <view class="picker-value">
           <text class="{{!zodiac ? 'placeholder' : ''}}">{{zodiac || '请选择'}}</text>
@@ -52,8 +64,112 @@
     </view>
   </view>
 
+  <!-- 兴趣爱好 -->
+  <view class="section-title">兴趣爱好</view>
+  <view class="card">
+    <view class="field">
+      <view class="field-label">Ta 喜欢什么 <text class="optional">(可多选)</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{hobbiesPresets}}"
+          wx:key="*this"
+          class="chip {{hobbiesSel[item] ? 'chip-on' : ''}}"
+          data-field="hobbies"
+          data-value="{{item}}"
+          bindtap="onToggleMulti"
+        >{{item}}</view>
+        <view class="chip chip-add" data-field="hobbies" bindtap="onAddCustom">+ 自定义</view>
+      </view>
+    </view>
+
+    <view class="field">
+      <view class="field-label">Ta 最近提过 <text class="optional">(选填)</text></view>
+      <input class="field-input" placeholder="ta 最近在看/在玩/想去的…" value="{{recentMentions}}" bindinput="onRecentMentionsInput" maxlength="50" />
+    </view>
+  </view>
+
+  <!-- 性格印象 -->
+  <view class="section-title">Ta 的性格印象</view>
+  <view class="card">
+    <view class="field">
+      <view class="field-label">性格 <text class="optional">(可多选)</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{personalityPresets}}"
+          wx:key="*this"
+          class="chip {{personalitySel[item] ? 'chip-on' : ''}}"
+          data-field="personality"
+          data-value="{{item}}"
+          bindtap="onToggleMulti"
+        >{{item}}</view>
+        <view class="chip chip-add" data-field="personality" bindtap="onAddCustom">+ 自定义</view>
+      </view>
+    </view>
+
+    <view class="field">
+      <view class="field-label">聊天风格 <text class="optional">(可多选)</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{chatStylePresets}}"
+          wx:key="*this"
+          class="chip {{chatStyleSel[item] ? 'chip-on' : ''}}"
+          data-field="chatStyle"
+          data-value="{{item}}"
+          bindtap="onToggleMulti"
+        >{{item}}</view>
+        <view class="chip chip-add" data-field="chatStyle" bindtap="onAddCustom">+ 自定义</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 了解程度 -->
+  <view class="section-title">你们的了解程度</view>
+  <view class="card">
+    <view class="field">
+      <view class="field-label">认识多久 <text class="optional">(选填)</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{knownDurationList}}"
+          wx:key="*this"
+          class="chip {{knownDuration === item ? 'chip-on' : ''}}"
+          data-field="knownDuration"
+          data-value="{{item}}"
+          bindtap="onToggleSingle"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="field">
+      <view class="field-label">关系阶段 <text class="optional">(选填，影响聊天分寸)</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{relationStageList}}"
+          wx:key="*this"
+          class="chip {{relationStage === item ? 'chip-on' : ''}}"
+          data-field="relationStage"
+          data-value="{{item}}"
+          bindtap="onToggleSingle"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="field">
+      <view class="field-label">见过面吗 <text class="optional">(选填)</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{metInPersonList}}"
+          wx:key="*this"
+          class="chip {{metInPerson === item ? 'chip-on' : ''}}"
+          data-field="metInPerson"
+          data-value="{{item}}"
+          bindtap="onToggleSingle"
+        >{{item}}</view>
+      </view>
+    </view>
+  </view>
+
   <view class="tip">
-    Ta 的 MBTI 和星座会让 AI 生成的回复更贴合 Ta 的性格。{'\n'}不知道也没关系，留空即可。
+    填得越多，AI 生成的回复越贴近 ta、越自然。{'\n'}只有性别必填，其余都可以留空，之后随时补。
   </view>
 
   <view class="footer">

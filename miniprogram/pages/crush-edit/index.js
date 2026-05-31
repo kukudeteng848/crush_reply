@@ -1,4 +1,9 @@
+// Crush 档案编辑
+// V2：从「昵称/性别/MBTI/星座」扩成完整画像，团购好评式标签输入。
+// 只有性别必填，昵称留空默认 crush，其余全部选填。
+
 const GENDER_LIST = ['男', '女'];
+const AGE_LIST = ['00后', '95后', '90后', '85后', '80后', '其他'];
 
 const MBTI_LIST = [
   'INTJ', 'INTP', 'ENTJ', 'ENTP',
@@ -13,23 +18,79 @@ const ZODIAC_LIST = [
   '射手座', '摩羯座', '水瓶座', '双鱼座'
 ];
 
+// 标签预设（用户可在每组末尾「+ 自定义」追加）
+const HOBBIES_PRESETS = ['看剧', '电影', '游戏', '运动', '音乐', '摄影', '旅行', '美食', '读书', '手作', '宠物', '二次元'];
+const PERSONALITY_PRESETS = ['开朗健谈', '安静内向', '幽默搞笑', '温柔体贴', '高冷', '毒舌不坏', '理性', '感性', '慢热'];
+const CHATSTYLE_PRESETS = ['秒回', '经常忙', '爱发表情包', '爱发语音', '爱分享日常', '很少主动', '话痨', '惜字如金'];
+
+// 单选标签
+const KNOWN_DURATION_LIST = ['刚加微信', '认识1-3个月', '认识半年以上', '老朋友了'];
+const RELATION_STAGE_LIST = ['初识', '朋友', '暧昧中', '在追'];
+const MET_IN_PERSON_LIST = ['还没见过', '见过1-2次', '经常见'];
+
+// 数组 → 选中 map
+function arrToSel(arr) {
+  const sel = {};
+  (Array.isArray(arr) ? arr : []).forEach(v => { if (v) sel[v] = true; });
+  return sel;
+}
+// 选中 map → 数组
+function selToArr(sel) {
+  return Object.keys(sel || {}).filter(k => sel[k]);
+}
+// 把已存的自定义标签并进预设列表，保证能渲染出来
+function mergePresets(presets, arr) {
+  const merged = presets.slice();
+  (Array.isArray(arr) ? arr : []).forEach(v => {
+    if (v && merged.indexOf(v) === -1) merged.push(v);
+  });
+  return merged;
+}
+
 Page({
   data: {
     editingId: '',
-    nickname: 'crush',
+    nickname: '',
     avatar: '',
-    gender: '',
-    mbti: '',
-    zodiac: '',
-    genderIndex: 0,
-    mbtiIndex: 0,
-    zodiacIndex: 0,
-    genderList: GENDER_LIST,
-    mbtiList: MBTI_LIST,
-    zodiacList: ZODIAC_LIST,
     saving: false,
     uploading: false,
-    loadingDetail: false
+    loadingDetail: false,
+
+    // 基本信息
+    gender: '',
+    age: '',
+    mbti: '',
+    mbtiIndex: 0,
+    zodiac: '',
+    zodiacIndex: 0,
+
+    // 标签（多选）：值用 *Sel map 记录是否选中，*Presets 是渲染列表
+    hobbies: [],
+    hobbiesSel: {},
+    hobbiesPresets: HOBBIES_PRESETS,
+    personality: [],
+    personalitySel: {},
+    personalityPresets: PERSONALITY_PRESETS,
+    chatStyle: [],
+    chatStyleSel: {},
+    chatStylePresets: CHATSTYLE_PRESETS,
+
+    // 文本
+    recentMentions: '',
+
+    // 单选标签
+    knownDuration: '',
+    relationStage: '',
+    metInPerson: '',
+
+    // 预设清单
+    genderList: GENDER_LIST,
+    ageList: AGE_LIST,
+    mbtiList: MBTI_LIST,
+    zodiacList: ZODIAC_LIST,
+    knownDurationList: KNOWN_DURATION_LIST,
+    relationStageList: RELATION_STAGE_LIST,
+    metInPersonList: MET_IN_PERSON_LIST
   },
 
   async onLoad(options) {
@@ -50,18 +111,30 @@ Page({
       const db = wx.cloud.database();
       const res = await db.collection('conversations').doc(id).get();
       const c = res.data;
-      const genderIdx = GENDER_LIST.indexOf(c.crushGender);
       const mbtiIdx = MBTI_LIST.indexOf(c.crushMbti);
       const zodiacIdx = ZODIAC_LIST.indexOf(c.crushZodiac);
       this.setData({
-        nickname: c.crushNickname || 'crush',
+        nickname: c.crushNickname && c.crushNickname !== 'crush' ? c.crushNickname : '',
         avatar: c.crushAvatar || '',
         gender: c.crushGender || '',
+        age: c.crushAge || '',
         mbti: c.crushMbti || '',
         zodiac: c.crushZodiac || '',
-        genderIndex: genderIdx >= 0 ? genderIdx : 0,
         mbtiIndex: mbtiIdx >= 0 ? mbtiIdx : 0,
         zodiacIndex: zodiacIdx >= 0 ? zodiacIdx : 0,
+        hobbies: c.crushHobbies || [],
+        hobbiesSel: arrToSel(c.crushHobbies),
+        hobbiesPresets: mergePresets(HOBBIES_PRESETS, c.crushHobbies),
+        personality: c.crushPersonality || [],
+        personalitySel: arrToSel(c.crushPersonality),
+        personalityPresets: mergePresets(PERSONALITY_PRESETS, c.crushPersonality),
+        chatStyle: c.crushChatStyle || [],
+        chatStyleSel: arrToSel(c.crushChatStyle),
+        chatStylePresets: mergePresets(CHATSTYLE_PRESETS, c.crushChatStyle),
+        recentMentions: c.crushRecentMentions || '',
+        knownDuration: c.knownDuration || '',
+        relationStage: c.relationStage || '',
+        metInPerson: c.metInPerson || '',
         loadingDetail: false
       });
       wx.hideLoading();
@@ -81,6 +154,59 @@ Page({
     this.setData({ nickname: e.detail.value });
   },
 
+  onRecentMentionsInput(e) {
+    this.setData({ recentMentions: e.detail.value });
+  },
+
+  // ============ 标签交互 ============
+  // 单选：再点一次可取消（性别在保存时校验，可不取消）
+  onToggleSingle(e) {
+    const { field, value } = e.currentTarget.dataset;
+    const cur = this.data[field];
+    this.setData({ [field]: cur === value ? '' : value });
+  },
+
+  // 多选：切换选中
+  onToggleMulti(e) {
+    const { field, value } = e.currentTarget.dataset;
+    const key = `${field}Sel.${value}`;
+    const cur = this.data[`${field}Sel`][value];
+    this.setData({ [key]: !cur });
+  },
+
+  // 自定义标签：弹输入框，加入预设并选中
+  onAddCustom(e) {
+    const { field } = e.currentTarget.dataset;
+    wx.showModal({
+      title: '自定义标签',
+      editable: true,
+      placeholderText: '输入后点确定',
+      success: (r) => {
+        if (!r.confirm) return;
+        const v = (r.content || '').trim();
+        if (!v) return;
+        const presetsKey = `${field}Presets`;
+        const presets = this.data[presetsKey];
+        if (presets.indexOf(v) === -1) {
+          this.setData({ [presetsKey]: presets.concat([v]) });
+        }
+        this.setData({ [`${field}Sel.${v}`]: true });
+      }
+    });
+  },
+
+  // ============ 选择器（MBTI / 星座，选项多用 picker）============
+  onMbtiChange(e) {
+    const idx = Number(e.detail.value);
+    this.setData({ mbti: MBTI_LIST[idx], mbtiIndex: idx });
+  },
+
+  onZodiacChange(e) {
+    const idx = Number(e.detail.value);
+    this.setData({ zodiac: ZODIAC_LIST[idx], zodiacIndex: idx });
+  },
+
+  // ============ 头像 ============
   async onTapAvatar() {
     if (this.data.uploading) return;
     try {
@@ -127,21 +253,7 @@ Page({
     }
   },
 
-  onGenderChange(e) {
-    const idx = Number(e.detail.value);
-    this.setData({ gender: GENDER_LIST[idx], genderIndex: idx });
-  },
-
-  onMbtiChange(e) {
-    const idx = Number(e.detail.value);
-    this.setData({ mbti: MBTI_LIST[idx], mbtiIndex: idx });
-  },
-
-  onZodiacChange(e) {
-    const idx = Number(e.detail.value);
-    this.setData({ zodiac: ZODIAC_LIST[idx], zodiacIndex: idx });
-  },
-
+  // ============ 保存 ============
   async onTapSave() {
     if (this.data.saving) return;
 
@@ -153,6 +265,22 @@ Page({
       return;
     }
 
+    const data = {
+      crushNickname: nickname,
+      crushAvatar: this.data.avatar,
+      crushGender: gender,
+      crushAge: this.data.age,
+      crushMbti: this.data.mbti,
+      crushZodiac: this.data.zodiac,
+      crushHobbies: selToArr(this.data.hobbiesSel),
+      crushPersonality: selToArr(this.data.personalitySel),
+      crushChatStyle: selToArr(this.data.chatStyleSel),
+      crushRecentMentions: (this.data.recentMentions || '').trim(),
+      knownDuration: this.data.knownDuration,
+      relationStage: this.data.relationStage,
+      metInPerson: this.data.metInPerson
+    };
+
     this.setData({ saving: true });
     wx.showLoading({ title: '保存中...', mask: true });
 
@@ -161,24 +289,12 @@ Page({
       const isEditing = !!this.data.editingId;
 
       if (isEditing) {
-        await db.collection('conversations').doc(this.data.editingId).update({
-          data: {
-            crushNickname: nickname,
-            crushAvatar: this.data.avatar,
-            crushGender: gender,
-            crushMbti: this.data.mbti,
-            crushZodiac: this.data.zodiac
-          }
-        });
+        await db.collection('conversations').doc(this.data.editingId).update({ data });
       } else {
         const now = new Date();
         await db.collection('conversations').add({
           data: {
-            crushNickname: nickname,
-            crushAvatar: this.data.avatar,
-            crushGender: gender,
-            crushMbti: this.data.mbti,
-            crushZodiac: this.data.zodiac,
+            ...data,
             defaultStyleId: '',
             lastMessageAt: null,
             lastMessagePreview: '',

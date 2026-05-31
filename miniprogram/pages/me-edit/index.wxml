@@ -1,0 +1,115 @@
+<view class="container">
+  <view class="intro">
+    这些资料只用来让 AI 模仿你的口吻、找到和 ta 的共同点。{'\n'}填得越多，回复越像你本人。只有性别必填。
+  </view>
+
+  <!-- 基本信息 -->
+  <view class="section-title">基本信息</view>
+  <view class="card">
+    <view class="field">
+      <view class="field-label">性别 <text class="required">*</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{genderList}}"
+          wx:key="*this"
+          class="chip {{gender === item ? 'chip-on' : ''}}"
+          data-field="gender"
+          data-value="{{item}}"
+          bindtap="onToggleSingle"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="field">
+      <view class="field-label">年龄段 <text class="optional">(选填)</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{ageList}}"
+          wx:key="*this"
+          class="chip {{age === item ? 'chip-on' : ''}}"
+          data-field="age"
+          data-value="{{item}}"
+          bindtap="onToggleSingle"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="field field-row">
+      <view class="field-label">MBTI <text class="optional">(选填)</text></view>
+      <picker mode="selector" range="{{mbtiList}}" value="{{mbtiIndex}}" bindchange="onMbtiChange">
+        <view class="picker-value">
+          <text class="{{!mbti ? 'placeholder' : ''}}">{{mbti || '请选择'}}</text>
+          <text class="chevron">›</text>
+        </view>
+      </picker>
+    </view>
+
+    <view class="field field-row">
+      <view class="field-label">星座 <text class="optional">(选填)</text></view>
+      <picker mode="selector" range="{{zodiacList}}" value="{{zodiacIndex}}" bindchange="onZodiacChange">
+        <view class="picker-value">
+          <text class="{{!zodiac ? 'placeholder' : ''}}">{{zodiac || '请选择'}}</text>
+          <text class="chevron">›</text>
+        </view>
+      </picker>
+    </view>
+  </view>
+
+  <!-- 兴趣 & 生活 -->
+  <view class="section-title">兴趣 & 生活</view>
+  <view class="card">
+    <view class="field">
+      <view class="field-label">我的爱好 <text class="optional">(可多选)</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{hobbiesPresets}}"
+          wx:key="*this"
+          class="chip {{hobbiesSel[item] ? 'chip-on' : ''}}"
+          data-field="hobbies"
+          data-value="{{item}}"
+          bindtap="onToggleMulti"
+        >{{item}}</view>
+        <view class="chip chip-add" data-field="hobbies" bindtap="onAddCustom">+ 自定义</view>
+      </view>
+    </view>
+
+    <view class="field">
+      <view class="field-label">我最近在追 <text class="optional">(选填)</text></view>
+      <input class="field-input" placeholder="最近在看的剧/综艺/游戏…" value="{{recentInto}}" bindinput="onRecentIntoInput" maxlength="50" />
+    </view>
+
+    <view class="field">
+      <view class="field-label">职业方向 <text class="optional">(选填)</text></view>
+      <input class="field-input" placeholder="互联网 / 金融 / 学生 / 自由职业…" value="{{occupation}}" bindinput="onOccupationInput" maxlength="30" />
+    </view>
+
+    <view class="field">
+      <view class="field-label">所在城市 <text class="optional">(选填)</text></view>
+      <input class="field-input" placeholder="你在哪个城市" value="{{city}}" bindinput="onCityInput" maxlength="30" />
+    </view>
+  </view>
+
+  <!-- 聊天习惯 -->
+  <view class="section-title">我的聊天习惯</view>
+  <view class="card">
+    <view class="field">
+      <view class="field-label">平时怎么聊 <text class="optional">(可多选)</text></view>
+      <view class="chip-group">
+        <view
+          wx:for="{{chatHabitsPresets}}"
+          wx:key="*this"
+          class="chip {{chatHabitsSel[item] ? 'chip-on' : ''}}"
+          data-field="chatHabits"
+          data-value="{{item}}"
+          bindtap="onToggleMulti"
+        >{{item}}</view>
+        <view class="chip chip-add" data-field="chatHabits" bindtap="onAddCustom">+ 自定义</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="footer">
+    <button class="btn-cancel" bindtap="onTapCancel">取消</button>
+    <button class="btn-save" bindtap="onTapSave" loading="{{saving}}" disabled="{{saving}}">保存</button>
+  </view>
+</view>

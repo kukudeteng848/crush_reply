@@ -405,14 +405,36 @@ Page({
   },
 
   onTapCopy(e) {
-    const text = e.currentTarget.dataset.text;
+    const { text, msgid, index } = e.currentTarget.dataset;
     if (!text) return;
     wx.setClipboardData({
       data: text,
       success: () => {
         wx.showToast({ title: '已复制', icon: 'success' });
+        // 复制 = 视为「我要发这条」，记录为选中，供下一轮上下文记忆使用
+        this.recordSelection(msgid, index, text);
       }
     });
+  },
+
+  // 把用户选中的回复记录到这条消息（本地 + 数据库）。
+  // 记忆系统据此续上下文；用户没点复制的轮次，云函数会兜底用第一条建议。
+  recordSelection(msgid, index, text) {
+    if (!msgid || String(msgid).startsWith('temp-')) return;
+    const sIdx = Number(index);
+    const newMsgs = this.data.messages.map(m =>
+      m._id === msgid ? { ...m, selectedIndex: sIdx, selectedText: text } : m
+    );
+    this.setData({ messages: newMsgs });
+    try {
+      const db = wx.cloud.database();
+      db.collection('messages').doc(msgid).update({
+        data: { selectedIndex: sIdx, selectedText: text }
+      });
+    } catch (err) {
+      // 选中记录失败不影响复制，仅记日志
+      console.warn('[chat] record selection failed:', err && err.errMsg);
+    }
   },
 
   onLongPressMessage(e) {
