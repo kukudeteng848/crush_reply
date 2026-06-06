@@ -375,6 +375,8 @@ Page({
         }, this.data.styleMap);
         const newMsgs = this.data.messages.map(m => m._id === tempId ? realMsg : m);
         this.setData({ messages: withTimeMarks(newMsgs, this.data.styleMap), scrollToView: 'msg-' + realMsg._id });
+        // 新增了一轮真实对话 → 静默推进长期记忆（攒够 20 轮云端才真总结，不阻塞 UI）
+        this.maybeSummarizeMemory();
       } else {
         const idx = this.data.messages.findIndex(m => m._id === appendToMessageId);
         if (idx >= 0) {
@@ -401,6 +403,21 @@ Page({
       }
     } finally {
       this.setData({ sending: false });
+    }
+  },
+
+  // 静默触发长期记忆维护（Phase 2）。
+  // 不 await、不提示、失败不打扰用户；云函数内部用 lastSummarizedCount 做幂等节流，
+  // 没攒够 20 轮会直接 skip，所以这里每轮都可以放心调。
+  maybeSummarizeMemory() {
+    if (!this.data.conversationId) return;
+    try {
+      wx.cloud.callFunction({
+        name: 'summarizeMemory',
+        data: { conversationId: this.data.conversationId }
+      }).catch(() => {});
+    } catch (e) {
+      // 记忆维护是后台增强，失败完全忽略
     }
   },
 

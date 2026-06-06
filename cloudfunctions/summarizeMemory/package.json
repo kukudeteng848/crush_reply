@@ -1,0 +1,10 @@
+{
+  "name": "summarizeMemory",
+  "version": "1.0.0",
+  "description": "维护 crush 对话的长期记忆（累积摘要 + 特征画像）",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3",
+    "axios": "^1.6.2"
+  }
+}

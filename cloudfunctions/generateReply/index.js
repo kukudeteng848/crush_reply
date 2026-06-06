@@ -161,12 +161,21 @@ function buildProfileBlock(conv, user) {
   pushIf(lines, '关系阶段', conv.relationStage);
   pushIf(lines, '见面情况', conv.metInPerson);
 
-  // AI 沉淀出来的 crush 特征（Phase 2 记忆系统写入，此处有就用）
+  // AI 沉淀出来的 crush 特征（三级记忆 / Phase 2 写入，有就用）
   const insights = conv.crushInsights || '';
   if (insights && String(insights).trim()) {
     lines.push('');
     lines.push('【从过往对话中观察到的 Ta】');
     lines.push(String(insights).trim());
+  }
+
+  // 历史话题累积摘要（二级记忆 / Phase 2 写入，只取最新一条）
+  const summaries = Array.isArray(conv.memorySummaries) ? conv.memorySummaries : [];
+  const latestSummary = summaries.length ? (summaries[summaries.length - 1].text || '') : '';
+  if (latestSummary && String(latestSummary).trim()) {
+    lines.push('');
+    lines.push('【之前聊过的重点（更早的对话摘要，仅供背景，别直接复述）】');
+    lines.push(String(latestSummary).trim());
   }
 
   // 「我」的资料：帮助 AI 用我的口吻、呼应共同点（按隐私约定不传我的昵称）
