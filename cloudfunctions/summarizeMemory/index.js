@@ -119,6 +119,20 @@ exports.main = async (event) => {
 
   const lastSummarized = conv.lastSummarizedCount || 0;
 
+  // 防御：用户删除过消息会让 count 落后于已记录的 lastSummarizedCount，
+  // 不校正会让条件 count - lastSummarized < SUMMARIZE_EVERY 永远成立，再也不总结。
+  // 这里直接把进度回拉到当前 count，下一轮重新蓄水即可。
+  if (count < lastSummarized) {
+    try {
+      await db.collection('conversations').doc(conversationId).update({
+        data: { lastSummarizedCount: count }
+      });
+    } catch (err) {
+      // 校正失败不影响后续流程，下次进来还有机会再试
+    }
+    return { success: true, skipped: true, reason: 'realigned', count };
+  }
+
   // 幂等节流：没攒够一个周期就不总结
   if (count - lastSummarized < SUMMARIZE_EVERY) {
     return { success: true, skipped: true, count, lastSummarized };

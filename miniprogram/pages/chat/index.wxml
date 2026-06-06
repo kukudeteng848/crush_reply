@@ -55,7 +55,7 @@
         <view class="bubble-row left" wx:if="{{item.type !== 'initiate'}}">
           <view class="avatar avatar-crush" bindtap="onTapCrushAvatar">
             <image src="{{conversation.crushAvatar}}" wx:if="{{conversation.crushAvatar}}" mode="aspectFill"></image>
-            <view class="avatar-default" wx:else>{{conversation.crushNickname[0]}}</view>
+            <view class="avatar-default" wx:else>{{conversation.crushNickname[0] || '?'}}</view>
           </view>
           <view class="bubble bubble-crush">
             <text>{{item.crushMessage}}</text>

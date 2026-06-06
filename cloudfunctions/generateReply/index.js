@@ -348,7 +348,7 @@ exports.main = async (event) => {
     const text = apiRes.data.choices[0].message.content || '';
     suggestions = text
       .split('\n')
-      .map(s => s.replace(/^\s*[\d一二三四五]+[.、)]\s*/, '').replace(/^["「『]|["」』]$/g, '').trim())
+      .map(s => s.replace(/^\s*[\d一二三四五]+[.、)）]\s*/, '').replace(/^["「『]|["」』]$/g, '').trim())
       .filter(s => s.length > 0)
       .slice(0, count);
 
