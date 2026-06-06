@@ -24,9 +24,31 @@ const PERSONALITY_PRESETS = ['开朗健谈', '安静内向', '幽默搞笑', '�
 const CHATSTYLE_PRESETS = ['秒回', '经常忙', '爱发表情包', '爱发语音', '爱分享日常', '很少主动', '话痨', '惜字如金'];
 
 // 单选标签
-const KNOWN_DURATION_LIST = ['刚加微信', '认识1-3个月', '认识半年以上', '老朋友了'];
 const RELATION_STAGE_LIST = ['初识', '朋友', '暧昧中', '在追'];
 const MET_IN_PERSON_LIST = ['还没见过', '见过1-2次', '经常见'];
+
+// 由「认识日期」算出人话描述，给编辑页展示用
+function describeKnownSince(since) {
+  if (!since) return '';
+  const d = new Date(since);
+  if (isNaN(d.getTime())) return '';
+  const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+  if (days < 0) return '';
+  if (days <= 7) return `刚认识 ${days} 天`;
+  if (days < 30) return `认识 ${Math.floor(days / 7)} 周`;
+  if (days < 365) return `认识约 ${Math.floor(days / 30)} 个月`;
+  const years = Math.floor(days / 365);
+  const months = Math.floor((days % 365) / 30);
+  return months > 0 ? `认识约 ${years} 年 ${months} 个月` : `认识约 ${years} 年`;
+}
+
+// 今天的 YYYY-MM-DD，给 date picker 的 end 上限用
+function todayStr() {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
 
 // 数组 → 选中 map
 function arrToSel(arr) {
@@ -37,6 +59,16 @@ function arrToSel(arr) {
 // 选中 map → 数组
 function selToArr(sel) {
   return Object.keys(sel || {}).filter(k => sel[k]);
+}
+// 两个数组求并集去重（保存时合并 AI 后台回填的标签，避免覆盖）
+function unionArr(a, b) {
+  const out = [];
+  const seen = {};
+  [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])].forEach(v => {
+    const k = String(v || '').trim();
+    if (k && !seen[k]) { seen[k] = true; out.push(k); }
+  });
+  return out;
 }
 // 把已存的自定义标签并进预设列表，保证能渲染出来
 function mergePresets(presets, arr) {
@@ -78,8 +110,15 @@ Page({
     // 文本
     recentMentions: '',
 
+    // 认识日期（存 knownSince，展示算出来的「认识多久」）
+    knownSince: '',
+    knownSinceText: '',
+    todayStr: todayStr(),
+
+    // AI 从聊天中观察到的零散特征（crushInsights，可编辑）
+    crushInsights: '',
+
     // 单选标签
-    knownDuration: '',
     relationStage: '',
     metInPerson: '',
 
@@ -88,7 +127,6 @@ Page({
     ageList: AGE_LIST,
     mbtiList: MBTI_LIST,
     zodiacList: ZODIAC_LIST,
-    knownDurationList: KNOWN_DURATION_LIST,
     relationStageList: RELATION_STAGE_LIST,
     metInPersonList: MET_IN_PERSON_LIST
   },
@@ -132,7 +170,9 @@ Page({
         chatStyleSel: arrToSel(c.crushChatStyle),
         chatStylePresets: mergePresets(CHATSTYLE_PRESETS, c.crushChatStyle),
         recentMentions: c.crushRecentMentions || '',
-        knownDuration: c.knownDuration || '',
+        knownSince: c.knownSince || '',
+        knownSinceText: describeKnownSince(c.knownSince),
+        crushInsights: c.crushInsights || '',
         relationStage: c.relationStage || '',
         metInPerson: c.metInPerson || '',
         loadingDetail: false
@@ -156,6 +196,20 @@ Page({
 
   onRecentMentionsInput(e) {
     this.setData({ recentMentions: e.detail.value });
+  },
+
+  onInsightsInput(e) {
+    this.setData({ crushInsights: e.detail.value });
+  },
+
+  // 选「认识日期」
+  onKnownSinceChange(e) {
+    const v = e.detail.value;
+    this.setData({ knownSince: v, knownSinceText: describeKnownSince(v) });
+  },
+
+  onClearKnownSince() {
+    this.setData({ knownSince: '', knownSinceText: '' });
   },
 
   // ============ 标签交互 ============
@@ -276,7 +330,8 @@ Page({
       crushPersonality: selToArr(this.data.personalitySel),
       crushChatStyle: selToArr(this.data.chatStyleSel),
       crushRecentMentions: (this.data.recentMentions || '').trim(),
-      knownDuration: this.data.knownDuration,
+      crushInsights: (this.data.crushInsights || '').trim(),
+      knownSince: this.data.knownSince || '',
       relationStage: this.data.relationStage,
       metInPerson: this.data.metInPerson
     };
@@ -289,6 +344,16 @@ Page({
       const isEditing = !!this.data.editingId;
 
       if (isEditing) {
+        // 防丢：用户编辑这段时间里，AI 可能在后台往 crushHobbies/crushPersonality 回填了新标签。
+        // 保存前重新拉一次库里的值，和当前选中取并集，避免把 AI 刚加的冲掉。
+        try {
+          const fresh = await db.collection('conversations').doc(this.data.editingId).get();
+          const f = fresh.data || {};
+          data.crushHobbies = unionArr(data.crushHobbies, f.crushHobbies);
+          data.crushPersonality = unionArr(data.crushPersonality, f.crushPersonality);
+        } catch (e) {
+          // 拉取失败就按当前选中保存，不阻断
+        }
         await db.collection('conversations').doc(this.data.editingId).update({ data });
       } else {
         const now = new Date();

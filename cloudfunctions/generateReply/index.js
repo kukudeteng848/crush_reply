@@ -118,6 +118,26 @@ function pushIf(lines, label, value) {
   if (v) lines.push(`- ${label}：${v}`);
 }
 
+// 由「认识日期」实时算出「认识多久」的人话描述。
+// 兼容老数据：没有 knownSince 时回退到旧的 knownDuration 文本标签。
+function describeKnownDuration(conv) {
+  const since = conv.knownSince;
+  if (since) {
+    const d = new Date(since);
+    if (!isNaN(d.getTime())) {
+      const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+      if (days < 0) return conv.knownDuration || '';
+      if (days <= 7) return `刚认识（约 ${days} 天）`;
+      if (days < 30) return `认识 ${Math.floor(days / 7)} 周`;
+      if (days < 365) return `认识约 ${Math.floor(days / 30)} 个月`;
+      const years = Math.floor(days / 365);
+      const months = Math.floor((days % 365) / 30);
+      return months > 0 ? `认识约 ${years} 年 ${months} 个月` : `认识约 ${years} 年`;
+    }
+  }
+  return conv.knownDuration || '';
+}
+
 // ============ 第一层：总纲 Prompt（统领所有对话）============
 function buildCorePrompt(stage) {
   const lines = [];
@@ -157,7 +177,7 @@ function buildProfileBlock(conv, user) {
   pushIf(lines, 'Ta 最近提过', conv.crushRecentMentions);
   pushIf(lines, '性格印象', joinTags(conv.crushPersonality));
   pushIf(lines, '聊天风格', joinTags(conv.crushChatStyle));
-  pushIf(lines, '认识多久', conv.knownDuration);
+  pushIf(lines, '认识多久', describeKnownDuration(conv));
   pushIf(lines, '关系阶段', conv.relationStage);
   pushIf(lines, '见面情况', conv.metInPerson);
 

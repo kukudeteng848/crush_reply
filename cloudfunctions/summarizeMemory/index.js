@@ -1,12 +1,13 @@
-// 长期记忆维护（Phase 2）
+// 长期记忆维护（Phase 2 + 特征回填）
 // 每攒够 N 轮对话，就把「上一条累积摘要 + 最近这批新对话」融合成一条更新后的摘要（二级记忆），
-// 并顺带刷新对 crush 的稳定特征画像（三级记忆 crushInsights）。
+// 并把对 crush 的观察【分流】回填：
+//   - 能归类到已有资料栏的（爱好 / 性格）→ 用 addToSet 追加进 crushHobbies / crushPersonality（只增不覆盖、自动去重）
+//   - 归不了类的零散特征（在意的点、生活细节、聊天雷区）→ 写进 crushInsights（编辑页「AI 观察到」区块，可编辑）
 //
 // 设计要点：
 //   - 幂等节流：用 conversations.lastSummarizedCount 记录「已总结到第几条」，
 //     只有 当前消息数 - 已总结数 >= SUMMARIZE_EVERY 才真正跑，否则直接 skip。
-//     这样前端即使漏触发或重复触发，也不会重复总结/丢账。
-//   - 滚动摘要：memorySummaries 数组留档（便于回看/调试），但 prompt 里只用最新一条。
+//   - 分流回填：爱好/性格走 addToSet（不动用户手填的，只补新的）；其余进 crushInsights。
 //   - 失败安全：总结失败不影响主聊天流程，返回错误即可，下次到点再补。
 const cloud = require('wx-server-sdk');
 const axios = require('axios');
@@ -39,17 +40,26 @@ function buildDialogText(rows) {
   return lines.join('\n');
 }
 
-function buildSummaryPrompt(prevSummary, prevInsights, dialogText, crushNickname) {
-  const name = crushNickname || 'Ta';
+function joinTags(v) {
+  if (!Array.isArray(v)) return '';
+  return v.filter(x => x && String(x).trim()).join('、');
+}
+
+function buildSummaryPrompt(ctx) {
+  const { prevSummary, prevObservations, knownHobbies, knownPersonality, dialogText, name } = ctx;
   const lines = [];
   lines.push(`你在帮我维护和 ${name}（我喜欢的人）的聊天「长期记忆」。`);
-  lines.push('下面有【已有的记忆摘要】【已知的特征】和【最近新增的对话】，请把它们融合成更新后的记忆。');
+  lines.push('请阅读【已有记忆】和【最近新增的对话】，更新记忆，并从对话里提炼出对 ta 的新观察。');
   lines.push('');
   lines.push('【已有的记忆摘要】（可能为空）');
   lines.push(prevSummary || '（暂无）');
   lines.push('');
-  lines.push(`【已知的 ${name} 的特征】（可能为空）`);
-  lines.push(prevInsights || '（暂无）');
+  lines.push('【已记录的爱好】');
+  lines.push(knownHobbies || '（暂无）');
+  lines.push('【已记录的性格】');
+  lines.push(knownPersonality || '（暂无）');
+  lines.push('【其他已知观察】');
+  lines.push(prevObservations || '（暂无）');
   lines.push('');
   lines.push('【最近新增的对话】');
   lines.push(dialogText || '（无）');
@@ -57,13 +67,15 @@ function buildSummaryPrompt(prevSummary, prevInsights, dialogText, crushNickname
   lines.push('请只输出一个 JSON 对象，格式如下：');
   lines.push('{');
   lines.push('  "summary": "把过去到现在聊过的重点融合成一段累积摘要，150字以内，客观记录聊过哪些话题、对方透露的关键信息和态度变化",');
-  lines.push(`  "insights": "关于 ${name} 的稳定特征要点：喜欢/讨厌什么、在意的事、性格、聊天雷区，用顿号或短句罗列，80字以内，和已有特征去重合并"`);
+  lines.push('  "hobbies": ["从对话里明确体现的 ta 的兴趣爱好，每个2-6字的短词，只列【已记录的爱好】里没有的新爱好，没有就空数组"],');
+  lines.push('  "personality": ["从对话里明确体现的 ta 的性格特点，每个2-6字短词，只列已记录里没有的，没有就空数组"],');
+  lines.push('  "observations": "归不进爱好/性格的零散但稳定的观察：ta 在意的点、生活细节、聊天雷区、情感偏好等，用顿号或短句罗列，100字以内，和【其他已知观察】去重合并"');
   lines.push('}');
-  lines.push('注意：只输出 JSON 本身，不要加解释、不要加代码块标记。若最近对话信息不足，可沿用已有内容。');
+  lines.push('要求：hobbies / personality 必须是对话里有据可查的，宁缺毋滥不要编造；只输出 JSON 本身，不要加解释或代码块标记。信息不足就给空数组/沿用已有。');
   return lines.join('\n');
 }
 
-// 宽松解析 AI 返回的 JSON（容忍 ```json 包裹、前后多余文字）
+// 宽松解析 AI 返回的 JSON
 function parseResult(text) {
   if (!text) return null;
   let t = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
@@ -72,9 +84,14 @@ function parseResult(text) {
   if (start >= 0 && end > start) t = t.slice(start, end + 1);
   try {
     const obj = JSON.parse(t);
+    const cleanArr = (a) => Array.isArray(a)
+      ? a.map(x => String(x || '').trim()).filter(x => x && x.length <= 12).slice(0, 6)
+      : [];
     return {
       summary: (obj.summary || '').toString().trim(),
-      insights: (obj.insights || '').toString().trim()
+      hobbies: cleanArr(obj.hobbies),
+      personality: cleanArr(obj.personality),
+      observations: (obj.observations || '').toString().trim()
     };
   } catch (e) {
     return null;
@@ -162,9 +179,15 @@ exports.main = async (event) => {
 
   const prevSummaries = Array.isArray(conv.memorySummaries) ? conv.memorySummaries : [];
   const prevSummary = prevSummaries.length ? (prevSummaries[prevSummaries.length - 1].text || '') : '';
-  const prevInsights = conv.crushInsights || '';
 
-  const prompt = buildSummaryPrompt(prevSummary, prevInsights, dialogText, conv.crushNickname);
+  const prompt = buildSummaryPrompt({
+    name: conv.crushNickname || 'Ta',
+    prevSummary,
+    prevObservations: conv.crushInsights || '',
+    knownHobbies: joinTags(conv.crushHobbies),
+    knownPersonality: joinTags(conv.crushPersonality),
+    dialogText
+  });
 
   let parsed;
   try {
@@ -172,7 +195,7 @@ exports.main = async (event) => {
       model: DEEPSEEK_MODEL,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.3,
-      max_tokens: 600,
+      max_tokens: 700,
       response_format: { type: 'json_object' }
     }, {
       headers: {
@@ -183,7 +206,7 @@ exports.main = async (event) => {
     });
     const text = apiRes.data.choices[0].message.content || '';
     parsed = parseResult(text);
-    if (!parsed || (!parsed.summary && !parsed.insights)) {
+    if (!parsed) {
       return { success: false, error: 'parse_failed', raw: text };
     }
   } catch (err) {
@@ -194,18 +217,20 @@ exports.main = async (event) => {
     };
   }
 
-  // 写回：push 摘要留档 + 更新滚动进度 + 刷新特征
+  // 写回：① 摘要留档 + 进度  ② 爱好/性格 addToSet 追加（不覆盖手填）③ 零散观察进 crushInsights
   const now = new Date();
   const updateData = { lastSummarizedCount: count };
   if (parsed.summary) {
-    updateData.memorySummaries = _.push([{
-      text: parsed.summary,
-      atCount: count,
-      createdAt: now
-    }]);
+    updateData.memorySummaries = _.push([{ text: parsed.summary, atCount: count, createdAt: now }]);
   }
-  if (parsed.insights) {
-    updateData.crushInsights = parsed.insights;
+  if (parsed.hobbies.length) {
+    updateData.crushHobbies = _.addToSet({ $each: parsed.hobbies });
+  }
+  if (parsed.personality.length) {
+    updateData.crushPersonality = _.addToSet({ $each: parsed.personality });
+  }
+  if (parsed.observations) {
+    updateData.crushInsights = parsed.observations;
   }
 
   try {
@@ -219,6 +244,8 @@ exports.main = async (event) => {
     summarized: true,
     count,
     summary: parsed.summary,
-    insights: parsed.insights
+    addedHobbies: parsed.hobbies,
+    addedPersonality: parsed.personality,
+    observations: parsed.observations
   };
 };
