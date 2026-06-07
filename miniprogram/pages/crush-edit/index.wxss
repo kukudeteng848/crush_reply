@@ -246,3 +246,41 @@
   color: #999;
   border-style: dashed;
 }
+
+/* AI 观察 textarea */
+.field-textarea {
+  width: 100%;
+  min-height: 120rpx;
+  font-size: 28rpx;
+  color: #1a1a1a;
+  line-height: 1.6;
+  background: #f7f8fa;
+  border-radius: 12rpx;
+  padding: 20rpx;
+  box-sizing: border-box;
+}
+
+.field-textarea::placeholder {
+  color: #bbb;
+  font-size: 24rpx;
+}
+
+/* 认识日期：右侧 picker + 清除 */
+.known-since-right {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.known-since-clear {
+  font-size: 24rpx;
+  color: #999;
+  padding: 4rpx 8rpx;
+}
+
+.known-since-hint {
+  padding: 0 32rpx 20rpx;
+  font-size: 24rpx;
+  color: #07c160;
+  margin-top: -8rpx;
+}

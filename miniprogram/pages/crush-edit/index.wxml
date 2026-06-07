@@ -122,22 +122,40 @@
     </view>
   </view>
 
+  <!-- AI 从聊天中观察到 -->
+  <view class="section-title">🤖 AI 从聊天中观察到</view>
+  <view class="card">
+    <view class="field">
+      <view class="field-label">
+        关于 Ta 的零散观察 <text class="optional">(AI 自动总结，可手动修改)</text>
+      </view>
+      <textarea
+        class="field-textarea"
+        placeholder="多聊几轮后，AI 会把从对话里发现的、上面没法归类的特点写在这里（比如：在意准时、养了只猫、不喜欢被催）。你也可以自己补充或修改。"
+        value="{{crushInsights}}"
+        bindinput="onInsightsInput"
+        maxlength="300"
+        auto-height
+      />
+    </view>
+  </view>
+
   <!-- 了解程度 -->
   <view class="section-title">你们的了解程度</view>
   <view class="card">
-    <view class="field">
-      <view class="field-label">认识多久 <text class="optional">(选填)</text></view>
-      <view class="chip-group">
-        <view
-          wx:for="{{knownDurationList}}"
-          wx:key="*this"
-          class="chip {{knownDuration === item ? 'chip-on' : ''}}"
-          data-field="knownDuration"
-          data-value="{{item}}"
-          bindtap="onToggleSingle"
-        >{{item}}</view>
+    <view class="field field-row">
+      <view class="field-label">认识日期 <text class="optional">(选填，自动算认识多久)</text></view>
+      <view class="known-since-right">
+        <picker mode="date" value="{{knownSince}}" end="{{todayStr}}" bindchange="onKnownSinceChange">
+          <view class="picker-value">
+            <text class="{{!knownSince ? 'placeholder' : ''}}">{{knownSince || '请选择'}}</text>
+            <text class="chevron">›</text>
+          </view>
+        </picker>
+        <text wx:if="{{knownSince}}" class="known-since-clear" catchtap="onClearKnownSince">清除</text>
       </view>
     </view>
+    <view wx:if="{{knownSinceText}}" class="known-since-hint">≈ {{knownSinceText}}</view>
 
     <view class="field">
       <view class="field-label">关系阶段 <text class="optional">(选填，影响聊天分寸)</text></view>

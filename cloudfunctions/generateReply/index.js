@@ -118,6 +118,26 @@ function pushIf(lines, label, value) {
   if (v) lines.push(`- ${label}：${v}`);
 }
 
+// 由「认识日期」实时算出「认识多久」的人话描述。
+// 兼容老数据：没有 knownSince 时回退到旧的 knownDuration 文本标签。
+function describeKnownDuration(conv) {
+  const since = conv.knownSince;
+  if (since) {
+    const d = new Date(since);
+    if (!isNaN(d.getTime())) {
+      const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+      if (days < 0) return conv.knownDuration || '';
+      if (days <= 7) return `刚认识（约 ${days} 天）`;
+      if (days < 30) return `认识 ${Math.floor(days / 7)} 周`;
+      if (days < 365) return `认识约 ${Math.floor(days / 30)} 个月`;
+      const years = Math.floor(days / 365);
+      const months = Math.floor((days % 365) / 30);
+      return months > 0 ? `认识约 ${years} 年 ${months} 个月` : `认识约 ${years} 年`;
+    }
+  }
+  return conv.knownDuration || '';
+}
+
 // ============ 第一层：总纲 Prompt（统领所有对话）============
 function buildCorePrompt(stage) {
   const lines = [];
@@ -157,16 +177,25 @@ function buildProfileBlock(conv, user) {
   pushIf(lines, 'Ta 最近提过', conv.crushRecentMentions);
   pushIf(lines, '性格印象', joinTags(conv.crushPersonality));
   pushIf(lines, '聊天风格', joinTags(conv.crushChatStyle));
-  pushIf(lines, '认识多久', conv.knownDuration);
+  pushIf(lines, '认识多久', describeKnownDuration(conv));
   pushIf(lines, '关系阶段', conv.relationStage);
   pushIf(lines, '见面情况', conv.metInPerson);
 
-  // AI 沉淀出来的 crush 特征（Phase 2 记忆系统写入，此处有就用）
+  // AI 沉淀出来的 crush 特征（三级记忆 / Phase 2 写入，有就用）
   const insights = conv.crushInsights || '';
   if (insights && String(insights).trim()) {
     lines.push('');
     lines.push('【从过往对话中观察到的 Ta】');
     lines.push(String(insights).trim());
+  }
+
+  // 历史话题累积摘要（二级记忆 / Phase 2 写入，只取最新一条）
+  const summaries = Array.isArray(conv.memorySummaries) ? conv.memorySummaries : [];
+  const latestSummary = summaries.length ? (summaries[summaries.length - 1].text || '') : '';
+  if (latestSummary && String(latestSummary).trim()) {
+    lines.push('');
+    lines.push('【之前聊过的重点（更早的对话摘要，仅供背景，别直接复述）】');
+    lines.push(String(latestSummary).trim());
   }
 
   // 「我」的资料：帮助 AI 用我的口吻、呼应共同点（按隐私约定不传我的昵称）
@@ -339,7 +368,7 @@ exports.main = async (event) => {
     const text = apiRes.data.choices[0].message.content || '';
     suggestions = text
       .split('\n')
-      .map(s => s.replace(/^\s*[\d一二三四五]+[.、)]\s*/, '').replace(/^["「『]|["」』]$/g, '').trim())
+      .map(s => s.replace(/^\s*[\d一二三四五]+[.、)）]\s*/, '').replace(/^["「『]|["」』]$/g, '').trim())
       .filter(s => s.length > 0)
       .slice(0, count);
 
