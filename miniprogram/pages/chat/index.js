@@ -47,7 +47,8 @@ function decorateMessage(m, styleMap) {
     typeLabel = `${s.emoji} 主动·${s.label}`;
   }
   const s = styleMap && styleMap[m.styleId];
-  const styleDisplay = s ? `${s.emoji} ${s.displayName}` : (m.styleId || '');
+  // 风格被云后台禁用/删除后，老消息也要有体面的回退文案（避免裸露英文 id 如 humor）
+  const styleDisplay = s ? `${s.emoji} ${s.displayName}` : '🎨 已下架风格';
   // 防御：旧数据或异常情况下 suggestions 可能缺失，兜底成数组避免渲染出空白卡片
   const suggestions = Array.isArray(m.suggestions) ? m.suggestions : [];
   return { ...m, suggestions, typeLabel, styleDisplay };
@@ -68,6 +69,8 @@ Page({
     conversationId: '',
     conversation: null,
     me: null,
+    crushAvatarUrl: '',
+    meAvatarUrl: '',
     styles: [],
     styleMap: {},
     selectedStyleId: '',
@@ -78,6 +81,10 @@ Page({
     sending: false,
     scrollToView: '',
     errorMsg: '',
+    // 分页：默认进入聊天页只拉最近 50 条，往上滑到顶触发拉更早
+    earliestCreatedAt: null,
+    hasMoreEarlier: false,
+    loadingEarlier: false,
     // 主动模式弹窗
     initiateModalVisible: false,
     scenarios: SCENARIOS,
@@ -100,6 +107,35 @@ Page({
         // silent
       }
     }
+    // 不管走没走上面的分支，都刷新一次头像临时链接（从「我的资料」改完头像返回也能更新）
+    this.resolveAvatars();
+  },
+
+  // 把 crush 和「我」的头像 fileID(cloud://) 一次性换成 https 临时链接。
+  // 聊天页每轮都渲染一对头像，长会话会有几十个 <image>；若直接用 cloud:// 逐个换链
+  // 会触发限流导致头像批量空白。这里集中换一次、全列表复用同一个 https，规避该问题。
+  async resolveAvatars() {
+    const conv = this.data.conversation;
+    const me = this.data.me;
+    const ids = [];
+    const crushId = conv && conv.crushAvatar;
+    const meId = me && me.avatar;
+    if (crushId && crushId.indexOf('cloud://') === 0) ids.push(crushId);
+    if (meId && meId.indexOf('cloud://') === 0) ids.push(meId);
+    if (!ids.length) return;
+    try {
+      const res = await wx.cloud.getTempFileURL({ fileList: ids });
+      const map = {};
+      (res.fileList || []).forEach(f => {
+        if (f.fileID && f.tempFileURL) map[f.fileID] = f.tempFileURL;
+      });
+      const patch = {};
+      if (crushId && map[crushId]) patch.crushAvatarUrl = map[crushId];
+      if (meId && map[meId]) patch.meAvatarUrl = map[meId];
+      if (Object.keys(patch).length) this.setData(patch);
+    } catch (err) {
+      // 换链失败就保持用 fileID 兜底渲染，不影响聊天
+    }
   },
 
   async onLoad(options) {
@@ -115,20 +151,23 @@ Page({
   async init() {
     try {
       const db = wx.cloud.database();
+      const PAGE_SIZE = 50;
       const [convRes, stylesRes, msgsRes] = await Promise.all([
         db.collection('conversations').doc(this.data.conversationId).get(),
         db.collection('styles').where({ enabled: true }).orderBy('sortOrder', 'asc').get(),
+        // 用 desc + limit(50) 拉「最近一页」，本地 reverse 回正序
         db.collection('messages')
           .where({ conversationId: this.data.conversationId, deletedAt: null })
-          .orderBy('createdAt', 'asc')
-          .limit(100)
+          .orderBy('createdAt', 'desc')
+          .limit(PAGE_SIZE)
           .get()
       ]);
 
       const conv = convRes.data;
       const styles = stylesRes.data;
       const styleMap = styles.reduce((m, s) => { m[s.id] = s; return m; }, {});
-      const messages = withTimeMarks(msgsRes.data, styleMap);
+      const rawMessages = (msgsRes.data || []).reverse();
+      const messages = withTimeMarks(rawMessages, styleMap);
 
       wx.setNavigationBarTitle({ title: conv.crushNickname || 'crush' });
 
@@ -146,12 +185,54 @@ Page({
         styleMap,
         selectedStyleId,
         selectedStyleDisplay,
-        messages
+        messages,
+        // 拉满一页就认为还有更早的；不足一页直接判定到顶
+        earliestCreatedAt: rawMessages[0] ? rawMessages[0].createdAt : null,
+        hasMoreEarlier: rawMessages.length === PAGE_SIZE
       });
 
       this.scrollToBottom();
+      this.resolveAvatars();
     } catch (err) {
       this.setData({ loading: false, errorMsg: (err && err.errMsg) || String(err) });
+    }
+  },
+
+  // 用户在聊天页向上滑到顶时触发，拉前面一页更早的消息接上去
+  async onScrollToUpper() {
+    if (this.data.loadingEarlier || !this.data.hasMoreEarlier) return;
+    if (!this.data.earliestCreatedAt) return;
+    this.setData({ loadingEarlier: true });
+    try {
+      const db = wx.cloud.database();
+      const _ = db.command;
+      const PAGE_SIZE = 50;
+      const res = await db.collection('messages')
+        .where({
+          conversationId: this.data.conversationId,
+          deletedAt: null,
+          createdAt: _.lt(this.data.earliestCreatedAt)
+        })
+        .orderBy('createdAt', 'desc')
+        .limit(PAGE_SIZE)
+        .get();
+      const rawEarlier = (res.data || []).reverse();
+      if (rawEarlier.length === 0) {
+        this.setData({ hasMoreEarlier: false, loadingEarlier: false });
+        return;
+      }
+      // 锁定原本第一条 id，让 scroll-into-view 在新内容接上后保持视觉位置不跳
+      const oldFirstId = this.data.messages[0] && this.data.messages[0]._id;
+      const combined = withTimeMarks([...rawEarlier, ...this.data.messages], this.data.styleMap);
+      this.setData({
+        messages: combined,
+        earliestCreatedAt: rawEarlier[0].createdAt,
+        hasMoreEarlier: rawEarlier.length === PAGE_SIZE,
+        loadingEarlier: false,
+        scrollToView: oldFirstId ? 'msg-' + oldFirstId : this.data.scrollToView
+      });
+    } catch (err) {
+      this.setData({ loadingEarlier: false });
     }
   },
 

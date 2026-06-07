@@ -96,6 +96,25 @@
   box-sizing: border-box;
 }
 
+/* 分页加载提示（顶部） */
+.page-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx 0 24rpx;
+  font-size: 24rpx;
+  color: #999;
+}
+
+.page-hint-end {
+  color: #b0b0b0;
+  font-size: 22rpx;
+}
+
+.page-hint-text {
+  margin-left: 12rpx;
+}
+
 .empty-tip {
   text-align: center;
   padding: 140rpx 60rpx 0;

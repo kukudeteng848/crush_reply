@@ -1,13 +1,14 @@
 // 长期记忆维护（Phase 2 + 特征回填）
 // 每攒够 N 轮对话，就把「上一条累积摘要 + 最近这批新对话」融合成一条更新后的摘要（二级记忆），
 // 并把对 crush 的观察【分流】回填：
-//   - 能归类到已有资料栏的（爱好 / 性格）→ 用 addToSet 追加进 crushHobbies / crushPersonality（只增不覆盖、自动去重）
+//   - 能归类到已有资料栏的（爱好 / 性格）→ 求并集追加进 crushHobbies / crushPersonality（只增不覆盖、自动去重）
 //   - 归不了类的零散特征（在意的点、生活细节、聊天雷区）→ 写进 crushInsights（编辑页「AI 观察到」区块，可编辑）
 //
 // 设计要点：
 //   - 幂等节流：用 conversations.lastSummarizedCount 记录「已总结到第几条」，
 //     只有 当前消息数 - 已总结数 >= SUMMARIZE_EVERY 才真正跑，否则直接 skip。
-//   - 分流回填：爱好/性格走 addToSet（不动用户手填的，只补新的）；其余进 crushInsights。
+//   - 抢锁 + 失败退锁：抢锁防并发；但 AI/写回任一步失败都把锁退回原值，否则这批 20 轮会被永久丢账。
+//   - 分流回填：爱好/性格用代码内并集（不动用户手填的，只补新的）；其余进 crushInsights。
 //   - 失败安全：总结失败不影响主聊天流程，返回错误即可，下次到点再补。
 const cloud = require('wx-server-sdk');
 const axios = require('axios');
@@ -43,6 +44,17 @@ function buildDialogText(rows) {
 function joinTags(v) {
   if (!Array.isArray(v)) return '';
   return v.filter(x => x && String(x).trim()).join('、');
+}
+
+// 已有数组 + 新增数组 → 去重并集（兼容老数据里字段为 undefined/非数组的情况）
+function mergeUnique(existing, additions) {
+  const out = [];
+  const seen = {};
+  [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(additions) ? additions : [])].forEach(v => {
+    const k = String(v || '').trim();
+    if (k && !seen[k]) { seen[k] = true; out.push(k); }
+  });
+  return out;
 }
 
 function buildSummaryPrompt(ctx) {
@@ -155,6 +167,29 @@ exports.main = async (event) => {
     return { success: true, skipped: true, count, lastSummarized };
   }
 
+  // 防竞态抢锁：用户快速发消息时同一会话可能并发触发两次 summarizeMemory，
+  // 没抢锁的话两次都会跑 DeepSeek + 写两份 memorySummaries。这里先把 lastSummarizedCount 推到当前 count，
+  // 下一次并发进来时 count - lastSummarized = 0 < 20 直接 skip。
+  // 关键：记下原值 prevLock，后续任何一步失败都把锁退回去（releaseLock），
+  // 否则这一批 20 轮会被永久标记成"已完成"，再也不会重试 → 爱好/摘要永久丢账。
+  const prevLock = lastSummarized;
+  const releaseLock = async () => {
+    try {
+      await db.collection('conversations').doc(conversationId).update({
+        data: { lastSummarizedCount: prevLock }
+      });
+    } catch (e) {
+      // 退锁失败也无妨：下批 20 轮到点仍会再尝试
+    }
+  };
+  try {
+    await db.collection('conversations').doc(conversationId).update({
+      data: { lastSummarizedCount: count }
+    });
+  } catch (err) {
+    return { success: false, error: 'lock_failed', detail: err.errMsg };
+  }
+
   // 取最近一批对话
   let rows;
   try {
@@ -165,15 +200,13 @@ exports.main = async (event) => {
       .get();
     rows = (res.data || []).reverse();
   } catch (err) {
+    await releaseLock();
     return { success: false, error: 'fetch_failed' };
   }
 
   const dialogText = buildDialogText(rows);
   if (!dialogText) {
-    // 没有可用对话，直接把进度推进，避免反复触发
-    await db.collection('conversations').doc(conversationId).update({
-      data: { lastSummarizedCount: count }
-    });
+    await releaseLock();
     return { success: true, skipped: true, reason: 'empty_dialog', count };
   }
 
@@ -207,9 +240,11 @@ exports.main = async (event) => {
     const text = apiRes.data.choices[0].message.content || '';
     parsed = parseResult(text);
     if (!parsed) {
+      await releaseLock(); // 解析失败 → 退锁，下批重试
       return { success: false, error: 'parse_failed', raw: text };
     }
   } catch (err) {
+    await releaseLock(); // DeepSeek 调用失败（超时/网络）→ 退锁，下批重试
     return {
       success: false,
       error: 'deepseek_call_failed',
@@ -217,26 +252,31 @@ exports.main = async (event) => {
     };
   }
 
-  // 写回：① 摘要留档 + 进度  ② 爱好/性格 addToSet 追加（不覆盖手填）③ 零散观察进 crushInsights
+  // 写回：① 摘要留档  ② 爱好/性格用「代码内求并集」追加（不覆盖手填、自动去重）③ 零散观察进 crushInsights
+  // 不用 _.addToSet 操作符：老数据里 crushHobbies 可能是 undefined/非数组，操作符会让整条 update 报错，
+  // 改成读已有值 + 新值合并后整体写，更稳。进度 lastSummarizedCount 已在抢锁时写过。
   const now = new Date();
-  const updateData = { lastSummarizedCount: count };
+  const updateData = {};
   if (parsed.summary) {
     updateData.memorySummaries = _.push([{ text: parsed.summary, atCount: count, createdAt: now }]);
   }
   if (parsed.hobbies.length) {
-    updateData.crushHobbies = _.addToSet({ $each: parsed.hobbies });
+    updateData.crushHobbies = mergeUnique(conv.crushHobbies, parsed.hobbies);
   }
   if (parsed.personality.length) {
-    updateData.crushPersonality = _.addToSet({ $each: parsed.personality });
+    updateData.crushPersonality = mergeUnique(conv.crushPersonality, parsed.personality);
   }
   if (parsed.observations) {
     updateData.crushInsights = parsed.observations;
   }
 
-  try {
-    await db.collection('conversations').doc(conversationId).update({ data: updateData });
-  } catch (err) {
-    return { success: false, error: 'update_failed', detail: err.errMsg };
+  if (Object.keys(updateData).length > 0) {
+    try {
+      await db.collection('conversations').doc(conversationId).update({ data: updateData });
+    } catch (err) {
+      await releaseLock(); // 写回失败 → 退锁，下批重试
+      return { success: false, error: 'update_failed', detail: err.errMsg };
+    }
   }
 
   return {

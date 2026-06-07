@@ -38,6 +38,7 @@ Page({
     try {
       const ext = (tempFilePath.split('.').pop() || 'jpg').toLowerCase();
       const cloudPath = `avatars/me-${this.data.user._id}-${Date.now()}.${ext}`;
+      const oldFileID = (this.data.user && this.data.user.avatar) || '';
 
       const upload = await wx.cloud.uploadFile({
         cloudPath,
@@ -57,6 +58,11 @@ Page({
       this.setData({ 'user.avatar': fileID, uploading: false });
       wx.hideLoading();
       wx.showToast({ title: '已更新', icon: 'success' });
+
+      // 后台静默删旧头像，避免云存储孤儿文件累积；失败完全忽略
+      if (oldFileID && oldFileID !== fileID && /^cloud:\/\//.test(oldFileID)) {
+        wx.cloud.deleteFile({ fileList: [oldFileID] }).catch(() => {});
+      }
     } catch (err) {
       wx.hideLoading();
       this.setData({ uploading: false });

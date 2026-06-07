@@ -84,6 +84,7 @@ Page({
     editingId: '',
     nickname: '',
     avatar: '',
+    originalAvatar: '', // 进入时的旧头像，保存成功且换过新头像后会被静默删除，避免云存储孤儿
     saving: false,
     uploading: false,
     loadingDetail: false,
@@ -154,6 +155,7 @@ Page({
       this.setData({
         nickname: c.crushNickname && c.crushNickname !== 'crush' ? c.crushNickname : '',
         avatar: c.crushAvatar || '',
+        originalAvatar: c.crushAvatar || '',
         gender: c.crushGender || '',
         age: c.crushAge || '',
         mbti: c.crushMbti || '',
@@ -367,6 +369,14 @@ Page({
             deletedAt: null
           }
         });
+      }
+
+      // 编辑模式下，如果保存的新头像和进来时的旧头像不一样，把旧头像静默删掉
+      // 避免云存储孤儿文件累积；删失败不打扰用户
+      const oldAvatar = this.data.originalAvatar;
+      const newAvatar = data.crushAvatar;
+      if (isEditing && oldAvatar && oldAvatar !== newAvatar && /^cloud:\/\//.test(oldAvatar)) {
+        wx.cloud.deleteFile({ fileList: [oldAvatar] }).catch(() => {});
       }
 
       wx.hideLoading();

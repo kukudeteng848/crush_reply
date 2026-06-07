@@ -27,7 +27,17 @@
       scroll-into-view="{{scrollToView}}"
       scroll-with-animation
       enable-flex
+      bindscrolltoupper="onScrollToUpper"
+      upper-threshold="80"
     >
+      <view wx:if="{{loadingEarlier}}" class="page-hint">
+        <text class="dot">•</text><text class="dot">•</text><text class="dot">•</text>
+        <text class="page-hint-text">加载更早的消息</text>
+      </view>
+      <view wx:elif="{{!hasMoreEarlier && messages.length > 0}}" class="page-hint page-hint-end">
+        — 没有更早的消息了 —
+      </view>
+
       <view class="empty-tip" wx:if="{{messages.length === 0}}">
         <view class="empty-illustration">
           <view class="empty-orb"></view>
@@ -54,7 +64,7 @@
         <!-- 左侧 crush 气泡：仅在 reply 模式显示 -->
         <view class="bubble-row left" wx:if="{{item.type !== 'initiate'}}">
           <view class="avatar avatar-crush" bindtap="onTapCrushAvatar">
-            <image src="{{conversation.crushAvatar}}" wx:if="{{conversation.crushAvatar}}" mode="aspectFill"></image>
+            <image src="{{crushAvatarUrl || conversation.crushAvatar}}" wx:if="{{crushAvatarUrl || conversation.crushAvatar}}" mode="aspectFill"></image>
             <view class="avatar-default" wx:else>{{conversation.crushNickname[0] || '?'}}</view>
           </view>
           <view class="bubble bubble-crush">
@@ -111,7 +121,7 @@
           </view>
 
           <view class="avatar avatar-me" bindtap="onTapMyAvatar">
-            <image wx:if="{{me.avatar}}" src="{{me.avatar}}" mode="aspectFill"></image>
+            <image wx:if="{{meAvatarUrl || me.avatar}}" src="{{meAvatarUrl || me.avatar}}" mode="aspectFill"></image>
             <view wx:else class="avatar-default avatar-default-me">{{me.nickname[0] || '我'}}</view>
           </view>
         </view>
@@ -132,6 +142,7 @@
           bindinput="onInputChange"
           confirm-type="send"
           bindconfirm="onTapSend"
+          maxlength="500"
         />
         <view
           class="send-btn {{(inputText && selectedStyleId && !sending) ? 'active' : 'disabled'}}"
@@ -188,7 +199,7 @@
         value="{{intentContext}}"
         bindinput="onIntentContextInput"
         placeholder="例如：周末想约去看《热辣滚烫》"
-        maxlength="100"
+        maxlength="200"
         auto-height
       />
 
