@@ -25,6 +25,17 @@ Page({
     await this.init();
   },
 
+  // 仅首页开放转发：朋友扫进来是干净的首页，不暴露任何具体聊天/隐私页。
+  // 不带 query，避免把当前用户的数据上下文带给别人。
+  // imageUrl 指定固定品牌封面，否则微信会截当前页面（会泄露聊天列表/个人信息）。
+  onShareAppMessage() {
+    return {
+      title: '不知道怎么回 ta？让 Crush 说帮你想',
+      path: '/pages/index/index',
+      imageUrl: '/images/share-cover.png'
+    };
+  },
+
   async init() {
     const app = getApp();
     if (!app || !app.globalData.cloudReady) {
